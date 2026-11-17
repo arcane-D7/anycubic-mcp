@@ -21,21 +21,33 @@
  *     must equal the recorded baseline and it may only drive the recorded
  *     `/api/<action>` set.
  *  4. BANNED MARKER — `// DESIGN: duplicated on purpose` is not an excuse.
- *  5. NO KEY MATERIAL — no `-----BEGIN ... PRIVATE KEY-----` block anywhere.
- *     The cloud MQTT identity is operator-supplied (resources/mqtt-tls/README).
+ *  5. NO KEY MATERIAL — no `-----BEGIN ... PRIVATE KEY-----` block anywhere
+ *     except where ARCHITECTURE_EXCEPTIONS says so (see below). The cloud
+ *     MQTT identity is operator-supplied by default (resources/mqtt-tls/README).
  *  6. AGNOSTIC PATHS — no absolute `C:\Users\<real name>` path; placeholders
  *     (`<USER_HOME>`, `%APPDATA%`, `${…}`) are the convention.
  *  7. mTLS FOLDER CONTRACT — `resources/mqtt-tls/` exists, contains only its
  *     README, and `.gitignore` keeps extracted files out of git.
+ *
+ * EXCEPTIONS — every rule that reports a path-bearing violation can be
+ * relaxed for one path through `scripts/architecture-exceptions.mjs`. An
+ * exception is a decision: it carries a written reason, it is printed on
+ * every green run, and an exception that never matches anything fails the
+ * check so the list cannot rot.
  *
  * Roots scanned: scripts/, tools/, tests/, docs/, plus the ui/ + resources/
  * spot checks in rules 3 and 7. `vendor/` and `dist/` are frozen/generated and
  * are exempt (except as rule-2 subjects).
  */
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { resolve, join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  ARCHITECTURE_EXCEPTIONS,
+  applyArchitectureExceptions,
+} from "./architecture-exceptions.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -92,7 +104,10 @@ const PRIVATE_KEY_RE = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
 // Windows' own profile directories are not operator identity.
 const NON_IDENTIFYING_PROFILES = new Set(["Public", "Default", "All Users", "Default User"]);
 
-const failures = [];
+const violations = [];
+const fail = (rule, path, message) => {
+  violations.push({ rule, path, message });
+};
 
 function sha256(buf) {
   return createHash("sha256").update(buf).digest("hex");
@@ -118,9 +133,7 @@ const rel = (p) => relative(root, p).replace(/\\/g, "/");
 
 for (const dir of ["apps", "crates"]) {
   if (existsSync(join(root, dir))) {
-    failures.push(
-      `[rule 1] ${dir}/ exists in the MCP repo — the editor/slicer lane belongs to Anycubic-Bridge-Pluggin`,
-    );
+    fail(1, `${dir}/`, "the editor/slicer lane belongs to Anycubic-Bridge-Pluggin");
   }
 }
 
@@ -131,7 +144,7 @@ for (const dir of SCAN_DIRS) {
     for (const m of src.matchAll(IMPORT_RE)) {
       const spec = m[1];
       if (/(^|\/)apps\//.test(spec) || /(^|\/)crates\//.test(spec)) {
-        failures.push(`[rule 1] ${rel(file)} imports "${spec}" from the editor/slicer lane`);
+        fail(1, rel(file), `imports "${spec}" from the editor/slicer lane`);
       }
     }
   }
@@ -144,7 +157,7 @@ for (const dir of SCAN_DIRS) {
 {
   const bundlePath = join(root, "vendor", "server.mjs");
   if (!existsSync(bundlePath)) {
-    failures.push("[rule 2] vendor/server.mjs is missing — the frozen bundle is the build base");
+    fail(2, null, "vendor/server.mjs is missing — the frozen bundle is the build base");
   } else {
     const bundle = readFileSync(bundlePath, "utf8");
     const specs = new Set(
@@ -152,16 +165,14 @@ for (const dir of SCAN_DIRS) {
     );
     for (const name of specs) {
       if (!existsSync(join(root, "scripts", name))) {
-        failures.push(
-          `[rule 2] vendor/server.mjs imports scripts/${name}, which does not exist in this repo`,
-        );
+        fail(2, `scripts/${name}`, "the frozen bundle imports it, but it is not in this repo");
       }
     }
   }
   for (const { file, symbol } of WIRING) {
     const p = join(root, file);
     if (!existsSync(p)) {
-      failures.push(`[rule 2] wired module ${file} is missing`);
+      fail(2, file, "wired module is missing");
       continue;
     }
     const src = readFileSync(p, "utf8");
@@ -169,7 +180,7 @@ for (const dir of SCAN_DIRS) {
       `export\\s+(?:async\\s+)?(?:function|const|let|var)\\s+${symbol}\\b`,
     ).test(src);
     if (!exported) {
-      failures.push(`[rule 2] ${file} no longer exports ${symbol} — build wiring would be dead`);
+      fail(2, file, `no longer exports ${symbol} — build wiring would be dead`);
     }
   }
 }
@@ -181,12 +192,12 @@ for (const dir of SCAN_DIRS) {
 {
   const frozenPath = join(root, FROZEN_UI.file);
   if (!existsSync(frozenPath)) {
-    failures.push(`[rule 3] ${FROZEN_UI.file} missing — cannot verify the frozen surface`);
+    fail(3, FROZEN_UI.file, "missing — cannot verify the frozen surface");
   } else {
     const src = readFileSync(frozenPath, "utf8");
     const actual = sha256(src);
     if (actual !== FROZEN_UI.baselineSha256) {
-      failures.push(`[rule 3] ${FROZEN_UI.label} changed (sha256 ${actual}) — ${FROZEN_UI.note}`);
+      fail(3, FROZEN_UI.file, `changed (sha256 ${actual}) — ${FROZEN_UI.note}`);
     }
     const actions = new Set();
     for (const matches of [
@@ -197,7 +208,7 @@ for (const dir of SCAN_DIRS) {
     }
     for (const action of actions) {
       if (!FROZEN_UI_ACTIONS.has(action)) {
-        failures.push(`[rule 3] ${FROZEN_UI.label} drives undocumented API action "${action}"`);
+        fail(3, FROZEN_UI.file, `drives undocumented API action "${action}"`);
       }
     }
   }
@@ -213,13 +224,11 @@ for (const dir of SCAN_DIRS) {
     const src = readFileSync(file, "utf8");
 
     if (src.includes(BANNED_MARKER) && r !== SELF) {
-      failures.push(`[rule 4] ${r}: banned duplicate-on-purpose marker`);
+      fail(4, r, "banned duplicate-on-purpose marker");
     }
 
     if (PRIVATE_KEY_RE.test(src)) {
-      failures.push(
-        `[rule 5] ${r}: contains a PRIVATE KEY block — the cloud MQTT identity is operator-supplied, never committed`,
-      );
+      fail(5, r, "contains a PRIVATE KEY block — relax only through ARCHITECTURE_EXCEPTIONS");
     }
 
     for (const m of src.matchAll(USER_PATH_RE)) {
@@ -230,7 +239,7 @@ for (const dir of SCAN_DIRS) {
         name.startsWith("$") ||
         name.startsWith("{");
       if (!placeholder && !NON_IDENTIFYING_PROFILES.has(name)) {
-        failures.push(`[rule 6] ${r}: absolute path with a real user name ("${name}")`);
+        fail(6, r, `absolute path with a real user name ("${name}")`);
       }
     }
   }
@@ -243,27 +252,66 @@ for (const dir of SCAN_DIRS) {
 {
   const tlsDir = join(root, "resources", "mqtt-tls");
   if (!existsSync(tlsDir)) {
-    failures.push(
-      "[rule 7] resources/mqtt-tls/ is missing — scripts/anycubic-cloud.mjs resolves that path",
-    );
+    fail(7, null, "resources/mqtt-tls/ is missing — scripts/anycubic-cloud.mjs resolves that path");
   } else {
-    const entries = readdirSync(tlsDir).sort();
-    const unexpected = entries.filter((f) => f !== "README.md");
-    if (unexpected.length) {
-      failures.push(
-        `[rule 7] resources/mqtt-tls/ contains ${unexpected.join(", ")} — only README.md may be committed`,
-      );
+    // Rule 7 guards GIT, not the operator's disk: locally extracted identity
+    // sitting in the folder is fine, committed identity is not. Hence
+    // `git ls-files` — what is tracked is what would leak.
+    const listed = spawnSync("git", ["ls-files", "resources/mqtt-tls"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    const tracked = listed.stdout
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((p) => p.replace(/^resources\/mqtt-tls\//, ""))
+      .sort();
+    for (const f of tracked.filter((f) => f !== "README.md")) {
+      // One violation per file, so an exception can target a single name.
+      fail(7, `resources/mqtt-tls/${f}`, "only README.md may be committed");
     }
     const ignore = readFileSync(join(root, ".gitignore"), "utf8");
     if (!/^resources\/mqtt-tls\/\*/m.test(ignore)) {
-      failures.push("[rule 7] .gitignore no longer ignores resources/mqtt-tls/*");
+      fail(7, ".gitignore", ".gitignore no longer ignores resources/mqtt-tls/*");
     }
   }
 }
 
-if (failures.length) {
+// Apply the programmable exceptions, with the anti-rot guarantees: an
+// exception that matches nothing fails, a duplicate fails, and every applied
+// exception is printed with its written reason.
+const { remaining, applied, unused, duplicates } = applyArchitectureExceptions(
+  violations,
+  ARCHITECTURE_EXCEPTIONS,
+);
+
+for (const exception of duplicates) {
+  console.error(
+    `[exceptions] DUPLICATE rule ${exception.rule} for ${exception.pathPrefix ?? exception.path} — keep one entry`,
+  );
+}
+for (const exception of unused) {
+  console.error(
+    `[exceptions] UNUSED rule ${exception.rule} for ${exception.pathPrefix ?? exception.path} — ` +
+      `nothing matched ("${exception.reason}"). Delete the entry or fix the path.`,
+  );
+}
+for (const entry of applied) {
+  console.log(
+    `[exceptions] rule ${entry.rule} relaxed for ${entry.path} ` +
+      `(${entry.violations} violation(s)) — ${entry.reason}`,
+  );
+}
+
+if (duplicates.length > 0 || unused.length > 0 || remaining.length > 0) {
   console.error("[check-architecture] FAIL");
-  for (const f of failures) console.error(`  - ${f}`);
+  for (const v of remaining)
+    console.error(`  - [rule ${v.rule}] ${v.path ?? "(repo)"}: ${v.message}`);
+  if (duplicates.length > 0) console.error(`  - ${duplicates.length} duplicate exception(s)`);
+  if (unused.length > 0) console.error(`  - ${unused.length} unused exception(s)`);
   process.exit(1);
 }
-console.log("[check-architecture] OK — lane isolation, wiring, frozen UI, key material, paths.");
+console.log(
+  "[check-architecture] OK — lane isolation, wiring, frozen UI, key material, paths." +
+    (applied.length > 0 ? ` ${applied.length} documented exception(s) applied.` : ""),
+);
