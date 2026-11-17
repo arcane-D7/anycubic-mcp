@@ -1,0 +1,8 @@
+# pnpm >= 10 reads build-script approvals from this file. There are no workspace
+# packages: this repo is the single published MCP plugin root.
+allowBuilds:
+  esbuild: true
+  husky: true
+onlyBuiltDependencies:
+  - esbuild
+  - husky

@@ -1,0 +1,59 @@
+name: health
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  health:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      # Agnostic defaults — the suite must never need real device data.
+      ANYCUBIC_ACCESS_CODE: ""
+      ANYCUBIC_PRINTER_IPS: ""
+      ANYCUBIC_CLOUD_TOKEN: ""
+      ANYCUBIC_CLOUD_REGION: "en"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Format (prettier)
+        run: pnpm run format:check
+        # NO `|| true` — a formatting drift fails the gate crisply.
+
+      - name: Lint (eslint)
+        run: pnpm run lint
+
+      - name: Unit tests
+        run: pnpm run test:unit
+
+      - name: Build (vendor/server.mjs -> dist/server.mjs)
+        run: pnpm run build
+
+      - name: Smoke (115-tool MCP contract)
+        run: pnpm run smoke
+
+      - name: Integration tests (3MF round-trip + loopback bridge)
+        run: pnpm run test:integration
+
+      - name: Licenses policy
+        run: pnpm run check:licenses
+
+      - name: Architecture rules
+        run: pnpm run check:architecture
+
+      - name: Sanitizer (no operator identity or key material)
+        run: pnpm run sanitize

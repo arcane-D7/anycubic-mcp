@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["scripts/*.mjs", "tools/**/*.mjs", "tests/**/*.test.mjs"],
+  "project": ["scripts/**/*.mjs", "tools/**/*.mjs", "tests/**/*.mjs"],
+  "exclude": ["duplicates"],
+  "ignoreDependencies": ["basic-ftp", "pngjs"],
+  "ignoreBinaries": []
+}
