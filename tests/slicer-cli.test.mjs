@@ -23,13 +23,34 @@ function tempDir(prefix = "slicer-test") {
   return { dir, path, writeFileSync };
 }
 
-test("discoverSlicerExecutable returns the installed exe (any candidate)", () => {
+test("discoverSlicerExecutable returns the installed exe (any candidate)", (t) => {
   const exe = discoverSlicerExecutable();
+  if (!exe) {
+    // Discovery is environment-dependent: on a machine without the slicer
+    // (e.g. a CI runner) there is nothing to find, and the contract is to
+    // return null — the tools refuse later with a clear reason.
+    t.skip("Anycubic Slicer Next is not installed on this machine");
+    return;
+  }
   assert.ok(typeof exe === "string" && exe.length > 0, "should discover the slicer exe");
   assert.ok(
     /AnycubicSlicerNext\.exe$/i.test(exe),
     `exe should point at AnycubicSlicerNext.exe (got ${exe})`,
   );
+});
+
+test("discoverSlicerExecutable honours ANYCUBIC_SLICER_EXE (deterministic, no install needed)", (t) => {
+  const { dir, path, writeFileSync } = tempDir();
+  const fake = path.join(dir, "AnycubicSlicerNext.exe");
+  writeFileSync(fake, "MZ");
+  const previous = process.env.ANYCUBIC_SLICER_EXE;
+  process.env.ANYCUBIC_SLICER_EXE = fake;
+  try {
+    assert.equal(discoverSlicerExecutable(), fake);
+  } finally {
+    if (previous === undefined) delete process.env.ANYCUBIC_SLICER_EXE;
+    else process.env.ANYCUBIC_SLICER_EXE = previous;
+  }
 });
 
 test("resolvePreset matches by substring and falls back to first", () => {
