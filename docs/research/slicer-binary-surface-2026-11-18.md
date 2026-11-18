@@ -559,9 +559,9 @@ On every start the app drops three files into
 
 | Role               | Content                                     | Verified with `openssl`                                                                             |
 | ------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| client private key | `-----BEGIN RSA PRIVATE KEY-----`, 2048-bit | `Private-Key: (2048 bit, 2 primes)`                                                                 |
-| client certificate | `-----BEGIN CERTIFICATE-----`               | `subject=O=AnyCubic`, `issuer=O=AnyCubic`, valid 2026-09 → 2036-09 (per-install, self-signed)       |
-| CA certificate     | `-----BEGIN CERTIFICATE-----`               | `subject=C=CN, ST=Guangdong, L=Shenzhen, O=Anycubic, OU=Anycubic, CN=AC Root CA`, valid 2023 → 2123 |
+| client private key | PEM RSA 2048-bit (header omitted by policy) | openssl reports `Private-Key: (2048 bit, 2 primes)`                                                 |
+| client certificate | PEM certificate                             | `subject=O=AnyCubic`, `issuer=O=AnyCubic`, valid 2026-09 → 2036-09 (per-install, self-signed)       |
+| CA certificate     | PEM certificate                             | `subject=C=CN, ST=Guangdong, L=Shenzhen, O=Anycubic, OU=Anycubic, CN=AC Root CA`, valid 2023 → 2123 |
 
 These are the `ca.crt` / `client.crt` / `client.key` that `resources/mqtt-tls/`
 asks the operator to supply, and they are regenerated/extracted by the app, not
