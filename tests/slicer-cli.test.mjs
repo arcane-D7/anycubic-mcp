@@ -39,7 +39,7 @@ test("discoverSlicerExecutable returns the installed exe (any candidate)", (t) =
   );
 });
 
-test("discoverSlicerExecutable honours ANYCUBIC_SLICER_EXE (deterministic, no install needed)", (t) => {
+test("discoverSlicerExecutable honours ANYCUBIC_SLICER_EXE (deterministic, no install needed)", () => {
   const { dir, path, writeFileSync } = tempDir();
   const fake = path.join(dir, "AnycubicSlicerNext.exe");
   writeFileSync(fake, "MZ");

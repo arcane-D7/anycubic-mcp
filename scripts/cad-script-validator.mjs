@@ -48,7 +48,6 @@ export function validateParametricScript(source) {
 /** Dry-run parse: catches syntax errors without executing (safe). */
 export function dryRunParseScript(source) {
   try {
-    // eslint-disable-next-line no-new-func
     new Function(`"use strict";\n${source}`);
     return { ok: true };
   } catch (error) {
