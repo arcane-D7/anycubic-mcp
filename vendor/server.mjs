@@ -643,6 +643,10 @@ var accountInfoOutputSchema = z
     user_id: z.number().int().optional(),
     user_email: z.string().optional(),
     region: z.string().optional(),
+    // How the XX-Token was obtained: a workbench session (legacy exchange) or
+    // the account JWT itself (Slicer Next >= 2.0.0.3).
+    auth_source: z.enum(["session", "account_jwt"]).optional(),
+    auth_reason: z.string().optional(),
     error: z.string().optional(),
   })
   .strict();
@@ -652,6 +656,7 @@ var accountDevicesOutputSchema = z
     count: z.number().int().optional(),
     devices: z.array(unknownRecord).optional(),
     token: z.string().optional(),
+    auth_source: z.enum(["session", "account_jwt"]).optional(),
     error: z.string().optional(),
   })
   .strict();
@@ -2246,6 +2251,7 @@ async function loginWithAccessToken(accessToken, options = {}) {
   const headers = { ...signHeaders(), "Content-Type": "application/json" };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 15e3);
+  let refusal = null;
   try {
     const res = await (options.fetchImpl ?? fetch)(`${base}/v3/public/loginWithAccessToken`, {
       method: "POST",
@@ -2254,44 +2260,86 @@ async function loginWithAccessToken(accessToken, options = {}) {
       signal: controller.signal,
     });
     const json2 = await res.json().catch(() => ({}));
-    if (!res.ok || (json2.code !== 0 && !json2.data?.token)) {
+    // An HTTP error or a transport fault keeps failing loudly; only an
+    // application-level refusal (HTTP 200, no session token) is a 2.0.0.3 signal.
+    if (!res.ok) {
       throw new Error(
         `loginWithAccessToken failed: ${res.status} ${JSON.stringify(json2).slice(0, 200)}`,
       );
     }
-    const token = json2.data?.token ?? json2.data?.access_token;
-    if (!token)
-      throw new Error(
-        `No token returned from loginWithAccessToken (code=${json2.code ?? "unknown"}; ${String(json2.msg ?? "no message").slice(0, 180)})`,
-      );
-    return {
-      token,
-      userId: json2.data?.user_id,
-      userEmail: json2.data?.user_email,
-      region: options.region ?? "en",
-    };
+    const token = json2?.data?.token ?? json2?.data?.access_token;
+    if (token) {
+      return {
+        token,
+        userId: json2.data?.user_id,
+        userEmail: json2.data?.user_email,
+        region: options.region ?? "en",
+        authSource: "session",
+      };
+    }
+    refusal = `loginWithAccessToken returned no session token (code=${json2?.code ?? "unknown"}; ${String(json2?.msg ?? "no message").slice(0, 180)})`;
   } finally {
     clearTimeout(timer);
   }
+  // Slicer Next >= 2.0.0.3: /v3/public/loginWithAccessToken answers
+  // `code 0, "Failed to get user info"` for every token (16 combinations
+  // tried; docs/research/cloud-auth-2026-11-18.md). The account JWT itself is
+  // accepted as XX-Token by the /v2/* endpoints, so it becomes the session.
+  // The exchange stays FIRST so older slicers keep working unchanged.
+  console.error(
+    `[cloud] ${refusal} — using the account access_token directly as XX-Token ` +
+      `(Slicer Next >= 2.0.0.3 serves /v2/* with it; the session exchange is kept first for older slicers)`,
+  );
+  const claims = decodeJwtPayload(String(accessToken)) ?? {};
+  return {
+    token: accessToken,
+    userId: claims.user_id ?? claims.sub,
+    userEmail: claims.email ?? claims.user_email,
+    region: options.region ?? "en",
+    authSource: "account_jwt",
+    authReason: refusal,
+  };
+}
+function mapCloudPrinter(item) {
+  if (!item || typeof item !== "object") return null;
+  const deviceStatus = Number(item.device_status ?? item.deviceStatus ?? item.status ?? 0) || 0;
+  return {
+    id: Number(item.id ?? item.printer_id ?? 0) || 0,
+    key: String(item.key ?? item.dev_id ?? item.sn ?? item.device_id ?? ""),
+    machineType: String(item.machine_type ?? item.machineType ?? ""),
+    deviceStatus,
+    name: item.name ?? item.device_name ?? void 0,
+    model: item.model ?? item.model_name ?? void 0,
+    online: Boolean(item.online ?? deviceStatus === 1),
+  };
+}
+function cloudPrinterList(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.list)) return data.list;
+  return null;
 }
 async function getPrinters(session, options = {}) {
-  const json2 = await request(session, "/work/printer/getPrinters", void 0, options);
-  const data = json2?.data;
-  const list = Array.isArray(data) ? data : (data?.list ?? json2?.list ?? []);
-  const devices = [];
-  for (const item of Array.isArray(list) ? list : []) {
-    if (!item || typeof item !== "object") continue;
-    devices.push({
-      id: Number(item.id ?? item.printer_id ?? 0) || 0,
-      key: String(item.key ?? item.dev_id ?? item.sn ?? item.device_id ?? ""),
-      machineType: String(item.machine_type ?? item.machineType ?? ""),
-      deviceStatus: Number(item.device_status ?? item.status ?? 0) || 0,
-      name: item.name ?? item.device_name ?? void 0,
-      model: item.model ?? item.model_name ?? void 0,
-      online: Boolean(item.online ?? item.device_status === 1),
-    });
+  // Slicer Next >= 2.0.0.3 no longer serves /work/printer/getPrinters. The v2
+  // route answers with the account JWT (or a legacy session token) as
+  // XX-Token; the old route stays as a fallback for older deployments.
+  try {
+    const json2 = await request(session, "/v2/printer/printersStatus", void 0, options);
+    const entries = cloudPrinterList(json2?.data);
+    if (entries) return entries.map(mapCloudPrinter).filter(Boolean);
+    console.error(
+      `[cloud] /v2/printer/printersStatus carried no printer list ` +
+        `(code=${json2?.code ?? "unknown"}; ${String(json2?.msg ?? "no message").slice(0, 180)}) — ` +
+        `falling back to /work/printer/getPrinters`,
+    );
+  } catch (error) {
+    console.error(
+      `[cloud] /v2/printer/printersStatus failed (${error instanceof Error ? error.message : String(error)}) — ` +
+        `falling back to /work/printer/getPrinters`,
+    );
   }
-  return devices;
+  const json2 = await request(session, "/work/printer/getPrinters", void 0, options);
+  const entries = cloudPrinterList(json2?.data) ?? cloudPrinterList(json2) ?? [];
+  return entries.map(mapCloudPrinter).filter(Boolean);
 }
 async function getCloudFiles(session, options = {}) {
   const json2 = await request(session, "/work/index/userFiles", {}, options);
@@ -2430,6 +2478,14 @@ async function runPowerShell(script, action, env) {
   }
   return out;
 }
+// cloud-token.json must NEVER carry a byte-order mark: JSON.parse throws on
+// U+FEFF, so a BOM would make the store read as "no token stored" forever
+// (the first external fix for the 2.0.0.3 lane hit exactly that). Writes are
+// always BOM-free, and a file that arrives with one is repaired on read.
+function tokenRecordText(record) {
+  const text = JSON.stringify(record, null, 2);
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
 var TokenStore = class {
   constructor(dataDir, cryptScript) {
     this.dataDir = dataDir;
@@ -2454,7 +2510,7 @@ var TokenStore = class {
       ...(payload?.exp !== void 0 ? { expiresAt: new Date(payload.exp * 1e3).toISOString() } : {}),
     };
     const tmp = this.file + ".tmp";
-    await writeFile(tmp, JSON.stringify(record, null, 2), { mode: 384 });
+    await writeFile(tmp, tokenRecordText(record), { mode: 384 });
     if (process.platform !== "win32") {
       await chmod(tmp, 384).catch(() => {});
     }
@@ -2464,7 +2520,16 @@ var TokenStore = class {
   async load() {
     try {
       const raw = await readFile3(this.file, "utf8");
-      const record = JSON.parse(raw);
+      const bom = raw.charCodeAt(0) === 0xfeff;
+      const record = JSON.parse(bom ? raw.slice(1) : raw);
+      if (bom) {
+        // Repaired, not tolerated silently: the next reader must not need this
+        // code path, and the operator gets one line saying what happened.
+        await writeFile(this.file, tokenRecordText(record), { mode: 384 }).catch(() => {});
+        console.error(
+          "[cloud] token store: cloud-token.json carried a UTF-8 BOM; rewritten without it",
+        );
+      }
       if (!record?.encrypted) return null;
       return record;
     } catch {
@@ -6543,6 +6608,8 @@ server.registerTool(
         user_id: info.userId,
         user_email: info.userEmail,
         region: session.region,
+        ...(session.authSource ? { auth_source: session.authSource } : {}),
+        ...(session.authReason ? { auth_reason: session.authReason } : {}),
       });
     } catch (error) {
       return errorResult(error);
@@ -6572,6 +6639,7 @@ server.registerTool(
         count: visible.length,
         devices: visible,
         token: session.token,
+        ...(session.authSource ? { auth_source: session.authSource } : {}),
       });
     } catch (error) {
       return errorResult(error);

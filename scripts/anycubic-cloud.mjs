@@ -16,11 +16,22 @@
  * Identity constants originate from WaresWichall/hass-anycubic_cloud + Nino6689/anycubic-cloud-api
  * (GPL-3.0), which extracted them from Anycubic's own slicer. This is a shared client
  * identity, not a per-user secret.
+ *
+ * Slicer Next 2.0.0.3 changed the cloud auth lane (reported 2026-11-18 by an
+ * external user's agent; see docs/research/cloud-auth-2026-11-18.md):
+ *  - /v3/public/loginWithAccessToken now answers `code 0, "Failed to get user
+ *    info"` for every combination tried (16: token shape, device type, header
+ *    case, base path). The account JWT is accepted DIRECTLY as `XX-Token` by
+ *    the /v2/* endpoints, so login() keeps the session exchange first (old
+ *    slicers still work that way) and lets it fail into the account JWT.
+ *  - /work/printer/getPrinters is no longer served; printers come from
+ *    GET /v2/printer/printersStatus. The old route stays as a fallback.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import mqtt from "mqtt";
+import { decodeJwtPayload } from "./auth-login.mjs";
 
 const AC_AID = "f9b3528877c94d5c9c5af32245db46ef";
 const AC_SEC = "0cf75926606049a3937f56b0373b99fb";
@@ -125,11 +136,18 @@ export function readMqttTlsMaterial(resourcesDir) {
 }
 
 export class AnycubicCloud {
-  constructor({ access_token, resources_dir, log }) {
-    this.access_token = access_token; // slicer JWT (access_token)
+  constructor({ access_token, resources_dir, log, fetchImpl }) {
+    this.access_token = access_token ?? null; // slicer JWT (access_token)
     this.resources_dir = resources_dir;
     this.log = log ?? (() => {});
+    // Injectable for fixture-based tests (the repo's other cloud clients take
+    // the same option); defaults to global fetch at call time.
+    this.fetchImpl = fetchImpl ?? null;
     this.xxToken = null;
+    // "session" (loginWithAccessToken exchanged one) or "account_jwt" (Slicer
+    // Next >= 2.0.0.3 fallback: the account JWT is the XX-Token).
+    this.authSource = null;
+    this.authReason = null;
     this.user = null;
     this.msgid = 0;
   }
@@ -156,10 +174,10 @@ export class AnycubicCloud {
     return h;
   }
 
-  async #api(method, endpoint, { body, query, withToken = true } = {}) {
+  async #send(method, endpoint, { body, query, withToken = true } = {}) {
     const url = new URL(API_ROOT + endpoint);
     for (const [k, v] of Object.entries(query ?? {})) url.searchParams.set(k, v);
-    const res = await fetch(url, {
+    const res = await (this.fetchImpl ?? fetch)(url, {
       method,
       headers: this.#authHeaders(withToken),
       signal: AbortSignal.timeout(15000),
@@ -171,6 +189,11 @@ export class AnycubicCloud {
     } catch {
       /* non-JSON */
     }
+    return { res, json };
+  }
+
+  async #api(method, endpoint, { body, query, withToken = true } = {}) {
+    const { res, json } = await this.#send(method, endpoint, { body, query, withToken });
     if (!res.ok)
       throw new AnycubicCloudError(`HTTP ${res.status} on ${endpoint}`, json?.code, res.status);
     if (json && json.code !== 1)
@@ -179,22 +202,116 @@ export class AnycubicCloud {
   }
 
   // ---- session --------------------------------------------------------
+  /**
+   * Acquire the XX-Token used by every signed call.
+   *
+   * Old path first: exchange the account JWT via
+   * POST /v3/public/loginWithAccessToken. Slicer Next 2.0.0.3 answers
+   * `code 0, "Failed to get user info"` to that exchange for every token, so
+   * when the server REFUSES the exchange at the application level (HTTP 200,
+   * no session token) the account JWT itself becomes the XX-Token — the /v2/*
+   * endpoints accept it directly. A transport failure or a real HTTP error is
+   * NOT a fallback signal: it keeps failing loudly.
+   */
   async login() {
-    const res = await this.#api("POST", "/v3/public/loginWithAccessToken", {
-      body: { device_type: "pcf", access_token: this.access_token },
-      withToken: false,
-    });
-    this.xxToken = res.data.token;
-    const user = await this.#api("GET", "/user/profile/userInfo");
-    this.user = user.data;
-    this.log(`login ok: user=${this.user.id}`);
-    return { xxToken: this.xxToken, user: this.user };
+    if (!this.access_token) {
+      throw new AnycubicCloudError("access_token is required for login()", "NO_ACCESS_TOKEN");
+    }
+    let sessionReason = null;
+    try {
+      const res = await this.#api("POST", "/v3/public/loginWithAccessToken", {
+        body: { device_type: "pcf", access_token: this.access_token },
+        withToken: false,
+      });
+      const token = res?.data?.token ?? res?.data?.access_token;
+      if (token) {
+        this.xxToken = token;
+        this.authSource = "session";
+      } else {
+        sessionReason = `loginWithAccessToken returned no session token (code=${res?.code ?? "unknown"}; ${String(res?.msg ?? "no message").slice(0, 120)})`;
+      }
+    } catch (error) {
+      const appRefusal = error instanceof AnycubicCloudError && error.http === 200;
+      if (!appRefusal) throw error;
+      sessionReason = `loginWithAccessToken refused the exchange (code=${error.code ?? "unknown"}; ${error.message})`;
+    }
+
+    if (!this.xxToken) {
+      this.xxToken = this.access_token;
+      this.authSource = "account_jwt";
+      this.authReason = sessionReason;
+      this.log(
+        `cloud auth: ${sessionReason} — using the account access_token directly as XX-Token ` +
+          `(Slicer Next >= 2.0.0.3 serves /v2/* with it; the session exchange is kept first for older slicers)`,
+      );
+    }
+
+    // Identity is best effort: /user/profile/userInfo is a workbench route and
+    // may refuse the raw JWT. Validate the token anyway — the callers that
+    // matter (/v2 printers, orders) do not need the profile — and fall back to
+    // the JWT's own claims (user_id/email) for MQTT's user name.
+    try {
+      const user = await this.#api("GET", "/user/profile/userInfo");
+      this.user = user.data;
+    } catch (error) {
+      if (this.authSource !== "account_jwt") throw error;
+      const claims = decodeJwtPayload(this.access_token) ?? {};
+      this.user = {
+        id: claims.user_id ?? claims.sub,
+        user_email: claims.email ?? claims.user_email,
+      };
+      this.log(
+        `cloud auth: user profile unavailable on the account-JWT fallback (${error.message}); ` +
+          `identity taken from JWT claims`,
+      );
+    }
+    this.log(`login ok: user=${this.user?.id ?? "unknown"} auth=${this.authSource}`);
+    return { xxToken: this.xxToken, user: this.user, authSource: this.authSource };
   }
 
   // ---- printers --------------------------------------------------------
+  /**
+   * List the printers bound to the account.
+   *
+   * Slicer Next 2.0.0.3: GET /v2/printer/printersStatus answers with the
+   * account JWT (or a legacy session token) as XX-Token. The old workbench
+   * route /work/printer/getPrinters is kept as a fallback so older
+   * deployments keep working; both paths are mapped to the same PrinterInfo
+   * shape this module's callers already read.
+   */
   async listPrinters() {
+    const viaV2 = await this.#printersFromV2();
+    if (viaV2) return viaV2;
     const res = await this.#api("GET", "/work/printer/getPrinters");
-    return res.data ?? [];
+    return extractPrinterEntries(res?.data) ?? [];
+  }
+
+  /** @returns {Promise<object[]|null>} null when the v2 route is unusable. */
+  async #printersFromV2() {
+    try {
+      const { res, json } = await this.#send("GET", "/v2/printer/printersStatus");
+      if (!res.ok) {
+        this.log(
+          `printers: /v2/printer/printersStatus HTTP ${res.status} — falling back to /work/printer/getPrinters`,
+        );
+        return null;
+      }
+      const entries = extractPrinterEntries(json?.data);
+      if (!entries) {
+        this.log(
+          `printers: /v2/printer/printersStatus carried no printer list ` +
+            `(code=${json?.code ?? "unknown"}; ${String(json?.msg ?? "no message").slice(0, 120)}) — ` +
+            `falling back to /work/printer/getPrinters`,
+        );
+        return null;
+      }
+      return entries.map(mapPrinterEntry).filter(Boolean);
+    } catch (error) {
+      this.log(
+        `printers: /v2/printer/printersStatus failed (${error.message}) — falling back to /work/printer/getPrinters`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -204,7 +321,7 @@ export class AnycubicCloud {
   async rawApi(method, endpoint, { params, query } = {}) {
     const url = new URL(API_ROOT + endpoint);
     if (query) for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
-    const res = await fetch(url, {
+    const res = await (this.fetchImpl ?? fetch)(url, {
       method,
       headers: this.#authHeaders(true),
       signal: AbortSignal.timeout(15000),
@@ -438,6 +555,71 @@ export class AnycubicCloud {
         }, durationMs);
     });
   }
+}
+
+// ---- printer payload mapping (Slicer Next 2.0.0.3) ---------------------
+// /v2/printer/printersStatus and /work/printer/getPrinters disagree on field
+// names, so both are normalised to the shape this module's callers read:
+// { id, key, machine_type, device_status, name, model, online } (snake_case,
+// like the workbench payload, because printer.machine_type feeds the MQTT
+// topics). Only fields either payload actually documents are mapped — an
+// unknown field is not invented.
+
+/** The printer array inside a workbench/v2 reply, or null when there is none. */
+export function extractPrinterEntries(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.list)) return data.list;
+  return null;
+}
+
+/** One printer entry from either payload shape → the PrinterInfo contract above. */
+export function mapPrinterEntry(item) {
+  if (!item || typeof item !== "object") return null;
+  const deviceStatus = Number(item.device_status ?? item.deviceStatus ?? item.status ?? 0) || 0;
+  return {
+    id: Number(item.id ?? item.printer_id ?? 0) || 0,
+    key: String(item.key ?? item.dev_id ?? item.sn ?? item.device_id ?? ""),
+    machine_type: String(item.machine_type ?? item.machineType ?? ""),
+    device_status: deviceStatus,
+    name: item.name ?? item.device_name ?? null,
+    model: item.model ?? item.model_name ?? null,
+    online: Boolean(item.online ?? deviceStatus === 1),
+  };
+}
+
+// ---- DPAPI token-store record (BOM safety) -----------------------------
+// cloud-token.json is JSON.parse'd by the MCP TokenStore and by
+// scripts/auth-login.mjs. JSON.parse throws on a leading BOM (U+FEFF), so a
+// store written by an editor or a copy/paste can look "empty" forever. This
+// module owns the record format: writes never emit a BOM, and a read strips
+// one and reports it so the caller can rewrite the file clean.
+
+/** Serialise a token record exactly as the store writes it — never with a BOM. */
+export function serializeTokenRecord(record) {
+  const text = JSON.stringify(record, null, 2);
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+/**
+ * Parse a token record, tolerating (and reporting) a leading BOM.
+ * @returns {{record: any, bom: boolean}} `bom` true means the file must be rewritten.
+ */
+export function parseTokenRecordText(raw) {
+  const text = String(raw ?? "");
+  const bom = text.charCodeAt(0) === 0xfeff;
+  return { record: JSON.parse(bom ? text.slice(1) : text), bom };
+}
+
+/**
+ * Read a token-store file, rewriting it without a BOM when one is found.
+ * A corrupt file keeps failing to JSON.parse — the caller decides how loud.
+ * @returns {Promise<{record: any, repaired: boolean}>}
+ */
+export async function readTokenRecordFile(file) {
+  const raw = await fs.promises.readFile(file, "utf8");
+  const { record, bom } = parseTokenRecordText(raw);
+  if (bom) await fs.promises.writeFile(file, serializeTokenRecord(record), { mode: 0o600 });
+  return { record, repaired: bom };
 }
 
 export function findSlicerJwt(logDir) {

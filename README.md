@@ -66,6 +66,19 @@ is the same manifest in the Codex plugin layout.
 | `ANYCUBIC_CLOUD_TOKEN`  | Slicer `access_token` for the cloud lanes (or use the DPAPI store) |
 | `ANYCUBIC_CLOUD_REGION` | Cloud region (`en` / `cn`)                                         |
 
+### Cloud auth on Slicer Next 2.0.0.3+
+
+Slicer Next 2.0.0.3 no longer returns a workbench session token from
+`/v3/public/loginWithAccessToken` — it answers `code 0, "Failed to get user
+info"` for every token. The session exchange is still attempted **first** (older
+slicers need it); when the server refuses it at the application level the
+**account JWT itself becomes the `XX-Token`**, which the `/v2/*` endpoints
+accept. Printer discovery therefore reads `GET /v2/printer/printersStatus` and
+keeps `/work/printer/getPrinters` as a fallback. The fallback is never silent:
+`account_login` answers `auth_source: "account_jwt"` plus an `auth_reason`, and
+the server logs one `[cloud] …` line saying why. Protocol record:
+`docs/research/cloud-auth-2026-11-18.md`.
+
 ### Cloud MQTT needs the operator's TLS identity
 
 `resources/mqtt-tls/` ships **empty** (only a README). Cloud MQTT requires the slicer's
@@ -78,7 +91,7 @@ path work without them. See `resources/mqtt-tls/README.md`.
 
 ```bash
 pnpm run build          # reproduce dist/server.mjs from the frozen vendor bundle
-pnpm run test:unit      # 22 node:test suites (offline, fixture-driven)
+pnpm run test:unit      # node:test suites (offline, fixture-driven)
 pnpm run test:integration   # 3MF round-trip + loopback bridge (offline)
 pnpm run smoke          # boots dist/server.mjs over stdio, asserts the 115-tool contract
 pnpm run check          # the gate (see below)
