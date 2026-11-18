@@ -57,6 +57,16 @@ Register it with an MCP client (`.mcp.json` already contains this shape):
 `plugin.json` is the plugin manifest (name, skills folder, interface copy). `.codex-plugin/plugin.json`
 is the same manifest in the Codex plugin layout.
 
+### CLI
+
+The same 115 tools are reachable without any MCP client: `npx anycubic <command>`
+(after `pnpm link --global`, the plain `anycubic` command works everywhere).
+`anycubic tools`, `anycubic printers [--lan]`, `anycubic status <printer>`,
+`anycubic account status`, and the generic `anycubic call <tool> '{...}'`.
+Human output by default, `--json` for scripts, `--quiet` for data only; exit codes
+0/1/2 (ok / tool error / usage). Token-shaped values are redacted in every mode.
+Full reference: `docs/cli.md`.
+
 ### Environment variables
 
 | Variable                | Purpose                                                            |
