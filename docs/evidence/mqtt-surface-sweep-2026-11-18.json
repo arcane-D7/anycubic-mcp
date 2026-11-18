@@ -1,0 +1,1387 @@
+{
+  "what": "Cloud MQTT surface sweep — every topic and field observed in a passive capture window",
+  "captured_at": "2026-11-18T23:01:34.972Z",
+  "ended_at": "2026-11-18T23:16:36.778Z",
+  "window_minutes": 15,
+  "read_only": true,
+  "published_actions": [
+    "aiSettings/query",
+    "axis/query",
+    "extfilbox/query",
+    "extfilbox/reportInfo",
+    "fan/query",
+    "file/listLocal",
+    "file/listUdisk",
+    "info/query",
+    "light/query",
+    "multiColorBox/getInfo",
+    "peripherie/query",
+    "print/query",
+    "tempature/query"
+  ],
+  "connection": {
+    "broker": "mqtts://mqtt-universe.anycubic.com:8883",
+    "mutual_tls": "operator-supplied slicer identity (never committed)",
+    "client_id_policy": "only md5(<account email> + \"pcf\") is accepted; any other id (suffixed, random, salted) is CONNACK 5 Not authorized",
+    "connack": {
+      "rc": 0,
+      "sessionPresent": false
+    }
+  },
+  "acl": [
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/app/<MACHINE_TYPE>/<PRINTER_KEY>/#",
+      "granted": "qos 0"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/#",
+      "granted": "qos 0"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/public/+/<PRINTER_KEY>/#",
+      "granted": "qos 0"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/app/+/<PRINTER_KEY>/#",
+      "granted": "qos 0"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/app/<MACHINE_TYPE>/+/#",
+      "granted": "REFUSED"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/+/#",
+      "granted": "REFUSED"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/+/<MACHINE_TYPE>/<PRINTER_KEY>/#",
+      "granted": "REFUSED"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/<MACHINE_TYPE>/<PRINTER_KEY>/#",
+      "granted": "REFUSED"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/pc/printer/<MACHINE_TYPE>/<PRINTER_KEY>/#",
+      "granted": "REFUSED"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/printer/#",
+      "granted": "REFUSED"
+    },
+    {
+      "filter": "anycubic/anycubicCloud/v1/#",
+      "granted": "REFUSED"
+    },
+    {
+      "filter": "#",
+      "granted": "REFUSED"
+    }
+  ],
+  "topics": [
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/aiSettings/report",
+      "count": 1
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/axis/report",
+      "count": 1
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/fan/report",
+      "count": 1
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/file/report",
+      "count": 2
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/info/report",
+      "count": 1
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/light/report",
+      "count": 1
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/multiColorBox/report",
+      "count": 5
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/peripherie/report",
+      "count": 1
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/response",
+      "count": 17
+    },
+    {
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/tempature/report",
+      "count": 1
+    }
+  ],
+  "acknowledgements": {
+    "count": 17,
+    "codes": {
+      "none": 17
+    },
+    "sample": [
+      {
+        "msgid": "<MSGID>"
+      },
+      {
+        "msgid": "<MSGID>"
+      },
+      {
+        "msgid": "<MSGID>"
+      }
+    ]
+  },
+  "sources": {
+    "info/report": {
+      "type": "info",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/info/report",
+      "actions": [
+        "report"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.015Z",
+      "last_seen": "2026-11-18T23:01:41.015Z",
+      "catalog_paths": 43,
+      "observed_paths": 43,
+      "missing": [],
+      "extra": [
+        "last_project"
+      ],
+      "payload": {
+        "printerName": "Anycubic Kobra S1",
+        "urls": {
+          "fileUploadurl": "",
+          "rtspUrl": ""
+        },
+        "project": null,
+        "last_project": null,
+        "model": "Anycubic Kobra S1",
+        "ip": "<LAN_IP>",
+        "version": "<LAN_IP>",
+        "state": "free",
+        "temp": {
+          "curr_hotbed_temp": 23,
+          "curr_nozzle_temp": 26,
+          "target_hotbed_temp": 0,
+          "target_nozzle_temp": 0
+        },
+        "print_speed_mode": 2,
+        "fan_speed_pct": 0,
+        "aux_fan_speed_pct": 0,
+        "box_fan_level": 0,
+        "features": {
+          "auto_leveling_support": true,
+          "vibration_compensation_support": true,
+          "flow_calibration_support": true,
+          "drying_first_support": true,
+          "camera_timelapse_support": true,
+          "gcode_3mf_support": true,
+          "delete_batch_support": true,
+          "preheating_support": true,
+          "fod_support": true,
+          "shengwang_rtc_support": true,
+          "pre_cancel_support": true,
+          "shengwang_rdt_support": true
+        }
+      }
+    },
+    "fan/query": {
+      "type": "fan",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/fan/report",
+      "actions": [
+        "query"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.016Z",
+      "last_seen": "2026-11-18T23:01:41.016Z",
+      "catalog_paths": 3,
+      "observed_paths": 3,
+      "missing": [],
+      "extra": [],
+      "payload": {
+        "aux_fan_speed_pct": 0,
+        "box_fan_level": 0,
+        "fan_speed_pct": 0
+      }
+    },
+    "tempature/query": {
+      "type": "tempature",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/tempature/report",
+      "actions": [
+        "query"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.104Z",
+      "last_seen": "2026-11-18T23:01:41.104Z",
+      "catalog_paths": 7,
+      "observed_paths": 6,
+      "missing": [
+        "taskid"
+      ],
+      "extra": [],
+      "payload": {
+        "curr_hotbed_temp": 23,
+        "curr_nozzle_temp": 27,
+        "curr_chamber_temp": 0,
+        "target_hotbed_temp": 0,
+        "target_nozzle_temp": 0,
+        "target_chamber_temp": 0
+      }
+    },
+    "peripherie/query": {
+      "type": "peripherie",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/peripherie/report",
+      "actions": [
+        "query"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.104Z",
+      "last_seen": "2026-11-18T23:01:41.104Z",
+      "catalog_paths": 3,
+      "observed_paths": 3,
+      "missing": [],
+      "extra": [],
+      "payload": {
+        "camera": 1,
+        "multiColorBox": 1,
+        "udisk": 1
+      }
+    },
+    "aiSettings/query": {
+      "type": "aiSettings",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/aiSettings/report",
+      "actions": [
+        "query"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.104Z",
+      "last_seen": "2026-11-18T23:01:41.104Z",
+      "catalog_paths": 5,
+      "observed_paths": 5,
+      "missing": [],
+      "extra": [],
+      "payload": {
+        "ai_settings": {
+          "status": 3,
+          "type": 2,
+          "count": 60,
+          "notice_type": [
+            0,
+            1
+          ],
+          "sensitivity_level": [
+            1,
+            1
+          ]
+        }
+      }
+    },
+    "axis/query": {
+      "type": "axis",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/axis/report",
+      "actions": [
+        "query"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.105Z",
+      "last_seen": "2026-11-18T23:01:41.105Z",
+      "catalog_paths": 3,
+      "observed_paths": 3,
+      "missing": [],
+      "extra": [],
+      "payload": {
+        "coordinates": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      }
+    },
+    "multiColorBox/getInfo": {
+      "type": "multiColorBox",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/multiColorBox/report",
+      "actions": [
+        "getInfo"
+      ],
+      "messages": 5,
+      "first_seen": "2026-11-18T23:01:41.105Z",
+      "last_seen": "2026-11-18T23:13:37.270Z",
+      "catalog_paths": 25,
+      "observed_paths": 25,
+      "missing": [],
+      "extra": [],
+      "payload": {
+        "head_tools_model": 0,
+        "multi_color_box": [
+          {
+            "id": 0,
+            "status": 1,
+            "model_id": "<ACE_MODEL_ID>",
+            "auto_feed": 0,
+            "loaded_slot": -1,
+            "feed_status": {
+              "code": 200,
+              "type": -1,
+              "current_status": -1,
+              "slot_index": -1
+            },
+            "temp": 27,
+            "humidity": 22,
+            "drying_status": {
+              "status": 0,
+              "target_temp": 0,
+              "duration": 0,
+              "remain_time": 0
+            },
+            "slots": [
+              {
+                "index": 0,
+                "sku": "AHPLLB-107",
+                "type": "PLA",
+                "color": [
+                  212,
+                  185,
+                  150
+                ],
+                "edit_status": 0,
+                "status": 5,
+                "color_group": [
+                  [
+                    212,
+                    185,
+                    150,
+                    255
+                  ]
+                ],
+                "icon_type": 0,
+                "consumables_percent": 50
+              },
+              {
+                "index": 1,
+                "sku": "",
+                "type": "PETG",
+                "color": [
+                  141,
+                  118,
+                  109
+                ],
+                "edit_status": 0,
+                "status": 5,
+                "color_group": [
+                  [
+                    141,
+                    118,
+                    109,
+                    255
+                  ]
+                ],
+                "icon_type": 0,
+                "consumables_percent": 0
+              },
+              {
+                "index": 2,
+                "sku": "",
+                "type": "PLA",
+                "color": [
+                  0,
+                  187,
+                  49
+                ],
+                "edit_status": 1,
+                "status": 5,
+                "color_group": [
+                  [
+                    0,
+                    187,
+                    49,
+                    255
+                  ]
+                ],
+                "icon_type": 0,
+                "consumables_percent": 0
+              },
+              {
+                "index": 3,
+                "sku": "",
+                "type": "PETG",
+                "color": [
+                  242,
+                  239,
+                  206
+                ],
+                "edit_status": 0,
+                "status": 5,
+                "color_group": [
+                  [
+                    242,
+                    239,
+                    206,
+                    255
+                  ]
+                ],
+                "icon_type": 0,
+                "consumables_percent": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "light/query": {
+      "type": "light",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/light/report",
+      "actions": [
+        "query"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.105Z",
+      "last_seen": "2026-11-18T23:01:41.105Z",
+      "catalog_paths": 3,
+      "observed_paths": 3,
+      "missing": [],
+      "extra": [],
+      "payload": {
+        "lights": [
+          {
+            "type": 2,
+            "status": 0,
+            "brightness": 0
+          }
+        ]
+      }
+    },
+    "file/listLocal": {
+      "type": "file",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/file/report",
+      "actions": [
+        "listLocal"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:01:41.395Z",
+      "last_seen": "2026-11-18T23:01:41.395Z",
+      "catalog_paths": 11,
+      "observed_paths": 6,
+      "missing": [
+        "filename",
+        "fileSize",
+        "fileKey",
+        "path",
+        "thumbnailUrl"
+      ],
+      "extra": [],
+      "payload": {
+        "list_mode": 0,
+        "records": [
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_1>",
+            "timestamp": 1794834534369,
+            "size": 16861969,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_2>",
+            "timestamp": 1794678000470,
+            "size": 252559,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_3>",
+            "timestamp": 1794676707566,
+            "size": 234239,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_4>",
+            "timestamp": 1794668326345,
+            "size": 18129389,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_5>",
+            "timestamp": 1794666562838,
+            "size": 187676,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_6>",
+            "timestamp": 1794660191894,
+            "size": 4445958,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_7>",
+            "timestamp": 1794649078923,
+            "size": 4127391,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_8>",
+            "timestamp": 1794616895303,
+            "size": 4541860,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_9>",
+            "timestamp": 1794613287093,
+            "size": 3583852,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_10>",
+            "timestamp": 1794348566650,
+            "size": 1124456,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_11>",
+            "timestamp": 1794342550976,
+            "size": 1140872,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_12>",
+            "timestamp": 1794317110990,
+            "size": 182659,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_13>",
+            "timestamp": 1793269816466,
+            "size": 421868,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_14>",
+            "timestamp": 1793214060201,
+            "size": 1507056,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_15>",
+            "timestamp": 1793213227431,
+            "size": 1308644,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_16>",
+            "timestamp": 1793210386347,
+            "size": 1715777,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_17>",
+            "timestamp": 1793205542040,
+            "size": 3799738,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_18>",
+            "timestamp": 1793024887505,
+            "size": 5652743,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_19>",
+            "timestamp": 1793021612008,
+            "size": 8785058,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_20>",
+            "timestamp": 1792838703670,
+            "size": 5958766,
+            "plate_number": 8
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_21>",
+            "timestamp": 1792776355807,
+            "size": 9508791,
+            "plate_number": 8
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_22>",
+            "timestamp": 1792752411575,
+            "size": 5960533,
+            "plate_number": 8
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_23>",
+            "timestamp": 1792752321531,
+            "size": 5961670,
+            "plate_number": 8
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_24>",
+            "timestamp": 1792745774504,
+            "size": 4463746,
+            "plate_number": 8
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_25>",
+            "timestamp": 1792692199922,
+            "size": 3250273,
+            "plate_number": 8
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_26>",
+            "timestamp": 1792660298665,
+            "size": 4101406,
+            "plate_number": 4
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_27>",
+            "timestamp": 1792162884035,
+            "size": 20076944,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_28>",
+            "timestamp": 1792152149321,
+            "size": 278802,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_29>",
+            "timestamp": 1792150653677,
+            "size": 278820,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_30>",
+            "timestamp": 1792141859800,
+            "size": 278801,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_31>",
+            "timestamp": 1792134731682,
+            "size": 183315,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_32>",
+            "timestamp": 1792069054943,
+            "size": 19704049,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_33>",
+            "timestamp": 1792061691038,
+            "size": 115819,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_34>",
+            "timestamp": 1792048914887,
+            "size": 7371393,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_35>",
+            "timestamp": 1791811511774,
+            "size": 1081388,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_36>",
+            "timestamp": 1791549928401,
+            "size": 2122671,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_37>",
+            "timestamp": 1791548134409,
+            "size": 1810097,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_38>",
+            "timestamp": 1791470370584,
+            "size": 2579229,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_39>",
+            "timestamp": 1791457901790,
+            "size": 1674231,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_40>",
+            "timestamp": 1791394469130,
+            "size": 1095152,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_41>",
+            "timestamp": 1791366178350,
+            "size": 6159013,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_42>",
+            "timestamp": 1791288664443,
+            "size": 731637,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_43>",
+            "timestamp": 1791283808729,
+            "size": 136069,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_44>",
+            "timestamp": 1790752480015,
+            "size": 1702029,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_45>",
+            "timestamp": 1790689484439,
+            "size": 3033221,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_46>",
+            "timestamp": 1790606634364,
+            "size": 17423309,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_47>",
+            "timestamp": 1790446179491,
+            "size": 721090,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_48>",
+            "timestamp": 1790362544076,
+            "size": 4976665,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_49>",
+            "timestamp": 1790341175194,
+            "size": 1209639,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_50>",
+            "timestamp": 1790183445072,
+            "size": 916593,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_51>",
+            "timestamp": 1790181456008,
+            "size": 348069,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_52>",
+            "timestamp": 1790176085204,
+            "size": 390074,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_53>",
+            "timestamp": 1789940454224,
+            "size": 6434309,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_54>",
+            "timestamp": 1789842381763,
+            "size": 36860640,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_55>",
+            "timestamp": 1789587541181,
+            "size": 39320,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_56>",
+            "timestamp": 1789561949245,
+            "size": 37428,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_57>",
+            "timestamp": 1789503030593,
+            "size": 37369,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_58>",
+            "timestamp": 1789423540658,
+            "size": 911170,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_59>",
+            "timestamp": 1789420605201,
+            "size": 2075962,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_60>",
+            "timestamp": 1789336480684,
+            "size": 19245796,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_61>",
+            "timestamp": 1789324543457,
+            "size": 1830053,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_62>",
+            "timestamp": 1789131247857,
+            "size": 11023229,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_63>",
+            "timestamp": 1789068094481,
+            "size": 3263836,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_64>",
+            "timestamp": 1789060201483,
+            "size": 786992,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_65>",
+            "timestamp": 1788987862436,
+            "size": 2090475,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_66>",
+            "timestamp": 1788795491950,
+            "size": 8020382,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_67>",
+            "timestamp": 1788430633181,
+            "size": 11613019,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_68>",
+            "timestamp": 1788333083061,
+            "size": 9093405,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_69>",
+            "timestamp": 1788264352334,
+            "size": 3339947,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_70>",
+            "timestamp": 1788111032605,
+            "size": 4905996,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_71>",
+            "timestamp": 1788087211443,
+            "size": 2923717,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_72>",
+            "timestamp": 1788043361798,
+            "size": 3866985,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_73>",
+            "timestamp": 1788036539581,
+            "size": 1745528,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_74>",
+            "timestamp": 1788029894914,
+            "size": 5108687,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_75>",
+            "timestamp": 1788022315996,
+            "size": 3445171,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_76>",
+            "timestamp": 1788004058878,
+            "size": 3661937,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_77>",
+            "timestamp": 1787968987611,
+            "size": 12154158,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_78>",
+            "timestamp": 1787941091905,
+            "size": 1075305,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_79>",
+            "timestamp": 1787938716418,
+            "size": 852640,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_80>",
+            "timestamp": 1787874621945,
+            "size": 13836509,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_81>",
+            "timestamp": 1787865137987,
+            "size": 331610,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_82>",
+            "timestamp": 1787857083410,
+            "size": 12846682,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_83>",
+            "timestamp": 1787790430885,
+            "size": 1030420,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_84>",
+            "timestamp": 1787765829039,
+            "size": 382127,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_85>",
+            "timestamp": 1787682352511,
+            "size": 7126594,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_86>",
+            "timestamp": 1787407129283,
+            "size": 36386645,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_87>",
+            "timestamp": 1786722992368,
+            "size": 12029448,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_88>",
+            "timestamp": 1786631763495,
+            "size": 6108113,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_89>",
+            "timestamp": 1786626654528,
+            "size": 5039679,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_90>",
+            "timestamp": 1786605053639,
+            "size": 2703207,
+            "plate_number": 3
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_91>",
+            "timestamp": 1786535790351,
+            "size": 1510315,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_92>",
+            "timestamp": 1786480509105,
+            "size": 377856,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_93>",
+            "timestamp": 1786448856615,
+            "size": 1039853,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_94>",
+            "timestamp": 1786296441823,
+            "size": 12178164,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_95>",
+            "timestamp": 1786286366668,
+            "size": 678870,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_96>",
+            "timestamp": 1786209433575,
+            "size": 1503316,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_97>",
+            "timestamp": 1786041276628,
+            "size": 172936,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_98>",
+            "timestamp": 1785945239270,
+            "size": 1152612,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_99>",
+            "timestamp": 1785929216619,
+            "size": 1041308,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_100>",
+            "timestamp": 1785878074797,
+            "size": 161139,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_101>",
+            "timestamp": 1785870433779,
+            "size": 467763,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_102>",
+            "timestamp": 1785686925884,
+            "size": 118272503,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_103>",
+            "timestamp": 1785619427694,
+            "size": 217390,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_104>",
+            "timestamp": 1785603743926,
+            "size": 228732,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_105>",
+            "timestamp": 1785592614582,
+            "size": 10474317,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_106>",
+            "timestamp": 1785445982319,
+            "size": 673920,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_107>",
+            "timestamp": 1785177832979,
+            "size": 3110618,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_108>",
+            "timestamp": 1785134840881,
+            "size": 7074580,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_109>",
+            "timestamp": 1785082192803,
+            "size": 28225901,
+            "plate_number": 2
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_110>",
+            "timestamp": 1785003221497,
+            "size": 2363908,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_111>",
+            "timestamp": 1784994603966,
+            "size": 934511,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_112>",
+            "timestamp": 1784992855699,
+            "size": 962250,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_113>",
+            "timestamp": 1784986898795,
+            "size": 757300,
+            "plate_number": 0
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_114>",
+            "timestamp": 1784911875037,
+            "size": 2951682,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_115>",
+            "timestamp": 1784900073293,
+            "size": 1307484,
+            "plate_number": 1
+          },
+          {
+            "is_dir": false,
+            "filename": "<GCODE_FILENAME_116>",
+            "timestamp": 1784824340817,
+            "size": 825287,
+            "plate_number": 0
+          }
+        ]
+      }
+    },
+    "file/listUdisk": {
+      "type": "file",
+      "topic": "anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/file/report",
+      "actions": [
+        "listUdisk"
+      ],
+      "messages": 1,
+      "first_seen": "2026-11-18T23:02:05.981Z",
+      "last_seen": "2026-11-18T23:02:05.981Z",
+      "catalog_paths": 11,
+      "observed_paths": 1,
+      "missing": [
+        "records[].filename",
+        "records[].is_dir",
+        "records[].timestamp",
+        "records[].size",
+        "records[].plate_number",
+        "filename",
+        "fileSize",
+        "fileKey",
+        "path",
+        "thumbnailUrl"
+      ],
+      "extra": [
+        "records"
+      ],
+      "payload": {
+        "list_mode": 0,
+        "records": []
+      }
+    }
+  },
+  "not_observed": [
+    "extfilbox",
+    "print",
+    "status"
+  ],
+  "notes": [
+    {
+      "at": "2026-11-18T23:01:35.432Z",
+      "text": "connected rc=0"
+    },
+    {
+      "at": "2026-11-18T23:01:35.543Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/app/<MACHINE_TYPE>/<PRINTER_KEY>/# -> 0"
+    },
+    {
+      "at": "2026-11-18T23:01:35.653Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/<PRINTER_KEY>/# -> 0"
+    },
+    {
+      "at": "2026-11-18T23:01:35.764Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/public/+/<PRINTER_KEY>/# -> 0"
+    },
+    {
+      "at": "2026-11-18T23:01:35.874Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/app/+/<PRINTER_KEY>/# -> 0"
+    },
+    {
+      "at": "2026-11-18T23:01:35.986Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/app/<MACHINE_TYPE>/+/# -> REFUSED"
+    },
+    {
+      "at": "2026-11-18T23:01:36.097Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/public/<MACHINE_TYPE>/+/# -> REFUSED"
+    },
+    {
+      "at": "2026-11-18T23:01:36.208Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/+/<MACHINE_TYPE>/<PRINTER_KEY>/# -> REFUSED"
+    },
+    {
+      "at": "2026-11-18T23:01:36.319Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/<MACHINE_TYPE>/<PRINTER_KEY>/# -> REFUSED"
+    },
+    {
+      "at": "2026-11-18T23:01:36.428Z",
+      "text": "grant anycubic/anycubicCloud/v1/pc/printer/<MACHINE_TYPE>/<PRINTER_KEY>/# -> REFUSED"
+    },
+    {
+      "at": "2026-11-18T23:01:36.536Z",
+      "text": "grant anycubic/anycubicCloud/v1/printer/# -> REFUSED"
+    },
+    {
+      "at": "2026-11-18T23:01:36.646Z",
+      "text": "grant anycubic/anycubicCloud/v1/# -> REFUSED"
+    },
+    {
+      "at": "2026-11-18T23:01:36.754Z",
+      "text": "grant # -> REFUSED"
+    }
+  ]
+}
