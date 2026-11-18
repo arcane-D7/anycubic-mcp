@@ -2,11 +2,13 @@
  * resources/mqtt-tls — the mTLS identity is operator-supplied and the plugin
  * fails CLOSED without it.
  *
- * The cloud MQTT broker needs ca.crt / client.crt / client.key. This repo does
- * not ship them (see resources/mqtt-tls/README.md). Three invariants:
+ * The cloud MQTT broker needs ca.crt / client.crt / client.key. Git ships only
+ * the README; the operator extracts the three files locally (see
+ * resources/mqtt-tls/README.md). Four invariants:
  *
- *  1. The tree never contains the identity: no cert/key file is committed, the
- *     folder is gitignored, and the only file in it is the README.
+ *  1. Git never contains the identity: nothing but README.md is TRACKED in the
+ *     folder. The check reads `git ls-files`, not the disk — an operator's
+ *     locally extracted files must not fail their own gate.
  *  2. A missing folder throws a typed, actionable refusal
  *     (`MQTT_TLS_MATERIAL_MISSING`) that names every absent file — never a raw
  *     ENOENT, never a silent fallback to plain TLS.
@@ -17,16 +19,10 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  existsSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -36,28 +32,32 @@ import {
 } from "../scripts/anycubic-cloud.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const tlsDir = path.join(root, "resources", "mqtt-tls");
 
 function emptyResources() {
   return mkdtempSync(path.join(tmpdir(), "anycubic-mqtt-tls-"));
 }
 
+function trackedInTlsFolder() {
+  const listed = spawnSync("git", ["ls-files", "resources/mqtt-tls"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return listed.stdout
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((entry) => entry.replace(/^resources\/mqtt-tls\//, ""))
+    .sort();
+}
+
 /* ------------------------------------------------------------------ */
-/* 1. The identity is never shipped                                   */
+/* 1. Git ships no identity material                                  */
 /* ------------------------------------------------------------------ */
 
-test("the repository ships no mTLS material — only the folder README", () => {
-  for (const file of ["ca.crt", "client.crt", "client.key"]) {
-    assert.equal(
-      existsSync(path.join(tlsDir, file)),
-      false,
-      `${file} must not be committed — the identity is operator-supplied (resources/mqtt-tls/README.md)`,
-    );
-  }
+test("git tracks only the README in resources/mqtt-tls — never the identity", () => {
   assert.deepEqual(
-    readdirSync(tlsDir).sort(),
+    trackedInTlsFolder(),
     ["README.md"],
-    "resources/mqtt-tls/ must contain the README only; the code path depends on the folder existing",
+    "the operator's ca.crt/client.crt/client.key stay local; git must track only the README",
   );
 });
 
