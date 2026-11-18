@@ -303,3 +303,124 @@ test("bundle token store still reports a corrupt file as no token", async () => 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+/* ------------------------------------------------------------------ */
+/* 4. account tools: the XX-Token is opt-in, never echoed by default   */
+/* ------------------------------------------------------------------ */
+// The 2.0.0.3 fallback makes the resolved XX-Token the long-lived account
+// JWT, so account_login / account_devices / account_files must not return it
+// unless the caller asks (include_token: true), exactly like
+// account_token_status. These assertions read the SHIPPED bundle: the input
+// schemas out of `// src/schemas.ts`, and each handler out of `// src/index.ts`.
+
+const SCHEMAS_START = "// src/schemas.ts";
+const SCHEMAS_END = "// src/windows.ts";
+
+let cachedSchemas;
+
+/** Import the bundle's schema section (its bare `zod` import made absolute). */
+async function schemaSections() {
+  if (cachedSchemas) return cachedSchemas;
+  const start = bundle.indexOf(SCHEMAS_START);
+  const end = bundle.indexOf(SCHEMAS_END);
+  assert.ok(
+    start >= 0 && end > start,
+    `vendor/server.mjs no longer carries the '${SCHEMAS_START}' → '${SCHEMAS_END}' sections`,
+  );
+  const zodUrl = import.meta.resolve("zod");
+  const source =
+    bundle
+      .slice(start, end)
+      .replace('import { z } from "zod";', `import { z } from ${JSON.stringify(zodUrl)};`) +
+    "\nexport { accountLoginInputSchema, accountDevicesInputSchema, accountFilesInputSchema, accountInfoOutputSchema, accountDevicesOutputSchema, accountFilesOutputSchema };\n";
+  cachedSchemas = await import(
+    `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}`
+  );
+  return cachedSchemas;
+}
+
+/** One `server.registerTool(...)` block from the bundle. */
+function toolBlock(name) {
+  const start = bundle.indexOf(`  "${name}",\n  {`);
+  assert.ok(start > 0, `vendor/server.mjs no longer registers ${name}`);
+  const next = bundle.indexOf("server.registerTool(", start);
+  return bundle.slice(start, next === -1 ? bundle.length : next);
+}
+
+test("bundle account inputs default include_token to false and stay .strict()", async () => {
+  const { accountLoginInputSchema, accountDevicesInputSchema, accountFilesInputSchema } =
+    await schemaSections();
+  const schemas = {
+    accountLoginInputSchema,
+    accountDevicesInputSchema,
+    accountFilesInputSchema,
+  };
+  for (const [name, schema] of Object.entries(schemas)) {
+    const parsed = schema.parse({});
+    assert.equal(parsed.include_token, false, `${name} must default to redaction`);
+    assert.equal(schema.safeParse({ nonsense: 1 }).success, false, `${name} must stay .strict()`);
+  }
+  assert.equal(accountLoginInputSchema.parse({ include_token: true }).include_token, true);
+});
+
+test("bundle account handlers emit the token only under include_token", () => {
+  for (const name of ["account_login", "account_devices", "account_files"]) {
+    const block = toolBlock(name);
+    assert.match(
+      block,
+      /async \(\{ [^}]*\binclude_token\b[^}]*\}\)/,
+      `${name} must accept the opt-in flag in its handler`,
+    );
+    assert.match(
+      block,
+      /\.\.\.\(include_token \? \{ token: session\.token \} : \{\}\)/,
+      `${name} must gate the token behind include_token`,
+    );
+    assert.equal(
+      /^\s+token: session\.token,?$/m.test(block),
+      false,
+      `${name} must not echo the token unconditionally`,
+    );
+  }
+  // One gated emission per tool, and no other way to reach session.token.
+  const gated =
+    bundle.match(/\.\.\.\(include_token \? \{ token: session\.token \} : \{\}\)/g) ?? [];
+  assert.equal(gated.length, 3);
+});
+
+test("bundle account output schemas accept the redacted result and stay .strict()", async () => {
+  const { accountInfoOutputSchema, accountDevicesOutputSchema, accountFilesOutputSchema } =
+    await schemaSections();
+
+  assert.equal(
+    accountInfoOutputSchema.safeParse({
+      ok: true,
+      user_id: 4242,
+      auth_source: "account_jwt",
+      auth_reason: "loginWithAccessToken refused the exchange (code=0)",
+    }).success,
+    true,
+    "a redacted login result is valid output",
+  );
+  assert.equal(
+    accountInfoOutputSchema.safeParse({ ok: true, token: "opt-in", auth_source: "session" })
+      .success,
+    true,
+    "the opt-in shape is still allowed",
+  );
+  assert.equal(accountInfoOutputSchema.safeParse({ ok: true, unexpected: 1 }).success, false);
+
+  assert.equal(
+    accountDevicesOutputSchema.safeParse({
+      ok: true,
+      count: 0,
+      devices: [],
+      auth_reason: "code 0",
+    }).success,
+    true,
+  );
+  assert.equal(accountDevicesOutputSchema.safeParse({ ok: true, token: "opt-in" }).success, true);
+  assert.equal(accountDevicesOutputSchema.safeParse({ ok: true, extra: true }).success, false);
+
+  assert.equal(accountFilesOutputSchema.safeParse({ ok: true, count: 0, files: [] }).success, true);
+  assert.equal(accountFilesOutputSchema.safeParse({ ok: true, token: "opt-in" }).success, true);
+});

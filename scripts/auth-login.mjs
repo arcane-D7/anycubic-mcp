@@ -23,6 +23,15 @@
  *            para o utilizador saber a limitação.
  *  - LAN Mode: continua a ser a alternativa sem conta (ver docs).
  *
+ * Slicer Next >= 2.0.0.3 (docs/research/cloud-auth-2026-11-18.md): o exchange
+ * `/v3/public/loginWithAccessToken` responde `code 0, "Failed to get user
+ * info"` e nenhum session token. Continua a ser tentado PRIMEIRO (slicers
+ * antigos); quando o servidor o recusa ao nível da aplicação (HTTP 200, sem
+ * token) o próprio access_token da conta passa a ser o XX-Token, tal como em
+ * `scripts/anycubic-cloud.mjs`. Erros de transporte/HTTP continuam a falhar
+ * alto. O resultado leva `auth_source: "account_jwt"` + `auth_reason`, e uma
+ * linha de log nomeia o fallback.
+ *
  * Uso:
  *   node scripts/auth-login.mjs                 # interativo (cola o token)
  *   node scripts/auth-login.mjs --region cn     # portal CN (en é default)
@@ -40,6 +49,15 @@ import path from "node:path";
 import { promisify } from "node:util";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import {
+  AUTH_SOURCE,
+  accountJwtFallback,
+  describeAccountJwtFallback,
+  describeExchangeRefusal,
+  isApplicationRefusal,
+  parseTokenRecordText,
+  serializeTokenRecord,
+} from "./cloud-auth-shared.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -140,6 +158,12 @@ function baseUrl(region) {
 
 /**
  * Troca um access_token por uma sessão do workbench.
+ *
+ * Em Slicer Next >= 2.0.0.3 o servidor recusa o exchange ao nível da aplicação
+ * (HTTP 200, `code 0`, sem `data.token`). Esse caso é distinguível de uma falha
+ * real: o Error lançado leva `.http`, `.code` e `.appRefusal`, e
+ * `validateAccessToken` só usa o fallback quando `.appRefusal` é true.
+ *
  * @returns {Promise<{token:string, userId?:number, userEmail?:string}>}
  * @throws {Error} com a mensagem do servidor (contém o "code"/"msg").
  */
@@ -159,15 +183,21 @@ export async function loginWithAccessToken(accessToken, options = {}) {
     const body = await res.json().catch(() => ({}));
     const code = Number(body?.code ?? (res.ok ? 0 : -1));
     const data = body?.data ?? {};
-    if (!res.ok || (code !== 0 && !data.token)) {
+    const token = data.token ?? data.access_token;
+    if (!res.ok || !token) {
       const detail = typeof body?.msg === "string" && body.msg ? body.msg : `HTTP ${res.status}`;
-      throw new Error(
+      const error = new Error(
         `loginWithAccessToken(${deviceType}) failed: ${String(detail).slice(0, 200)}` +
           (Number.isFinite(code) ? ` (code=${code})` : ""),
       );
+      // HTTP 200 + no session token = the 2.0.0.3 application-level refusal,
+      // which `isApplicationRefusal()` recognises. Everything else (transport
+      // fault, 4xx/5xx) keeps failing loudly.
+      error.http = res.status;
+      error.code = code;
+      error.appRefusal = res.ok;
+      throw error;
     }
-    const token = data.token ?? data.access_token;
-    if (!token) throw new Error("No token returned from loginWithAccessToken.");
     const au = (v) => (v === undefined || v === null ? undefined : Number(v));
     return {
       token,
@@ -203,20 +233,36 @@ async function getUserInfo(session, options = {}) {
 }
 
 /**
+ * Um token é um JWT de conta (o que o slicer guarda) ou outra coisa?
+ * O JWT de conta traz `user_id` (a conta printer-cloud) ou `mode: "prod"`
+ * (docs/research/cloud-auth-2026-11-18.md). Exigir essa forma evita tratar um
+ * XX-Token opaco do portal como se fosse o JWT da conta no fallback 2.0.0.3.
+ */
+export function looksLikeAccountJwt(classified) {
+  if (!classified?.ok) return false;
+  const claims = classified.claims ?? {};
+  return claims.user_id !== undefined || claims.mode === "prod";
+}
+
+/**
  * Valida um token e descobre o seu modo.
  * Ordem (padrão da comunidade `retry_access_token_as_user_token`):
  *   1. tentar como "pcf" (slicer) — se funcionar => MQTT habilitado;
- *   2. se o servidor responder "User does not exist" (token de portal),
+ *   2. recusa ao nível da aplicação (HTTP 200, sem token — Slicer Next
+ *      >= 2.0.0.3) com um JWT de conta => o próprio token passa a ser o
+ *      XX-Token (`auth_source: "account_jwt"`), uma linha de log nomeia-o;
+ *   3. se o servidor responder "User does not exist" (token de portal),
  *      tentar como "web" — polling-only (mqtt:false).
+ * Erros de transporte/HTTP nunca caem no fallback: falham alto.
  */
 export async function validateAccessToken(accessToken, options = {}) {
   const raw = String(accessToken ?? "").trim();
   if (!raw) throw new Error("access_token is required");
   const classified = classifyAccessToken(raw);
-  if (!classified.ok) {
-    // Aceita tokens de portal que não sejam JWT de 3 partes? O workbench espera
-    // JWT; tokens inválidos serão rejeitados na rede com a mensagem do servidor.
-  }
+  const region = options.region ?? "en";
+  const log = options.log ?? ((line) => console.error(line));
+
+  const transport = (deviceType) => (deviceType === AUTH_MODES.PCF ? "cloud_mqtt" : "http_polling");
 
   const attempt = async (deviceType) => {
     try {
@@ -224,33 +270,87 @@ export async function validateAccessToken(accessToken, options = {}) {
         ...options,
         deviceType,
       });
-      const info = await getUserInfo(
-        { token: session.token, region: options.region ?? "en" },
-        options,
-      );
+      const info = await getUserInfo({ token: session.token, region }, options);
       return {
         ok: true,
         mode: deviceType,
-        transport: deviceType === AUTH_MODES.PCF ? "cloud_mqtt" : "http_polling",
+        transport: transport(deviceType),
         mqtt: deviceType === AUTH_MODES.PCF,
         user_id: session.userId ?? info.userId,
         user_email: session.userEmail ?? info.userEmail,
-        region: options.region ?? "en",
+        region,
+        auth_source: AUTH_SOURCE.SESSION,
         ...buildTokenRecord(raw),
       };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        failure: error,
+      };
     }
+  };
+
+  /** 2.0.0.3: the account JWT itself becomes the XX-Token. */
+  const accountJwt = (deviceType, failure) => {
+    const reason = describeExchangeRefusal({
+      http: failure?.http,
+      code: failure?.code,
+      message: failure?.message,
+    });
+    const claims = classified.claims ?? {};
+    const id = Number(claims.user_id);
+    return {
+      ok: true,
+      mode: deviceType,
+      transport: transport(deviceType),
+      mqtt: deviceType === AUTH_MODES.PCF,
+      // `user_id` stays numeric (the MCP output schema types it as a number);
+      // the JWT's `sub` is already exposed by buildTokenRecord below.
+      ...(Number.isFinite(id) ? { user_id: id } : {}),
+      ...((claims.email ?? claims.user_email)
+        ? { user_email: claims.email ?? claims.user_email }
+        : {}),
+      region,
+      auth_source: AUTH_SOURCE.ACCOUNT_JWT,
+      auth_reason: reason,
+      ...buildTokenRecord(raw),
+    };
+  };
+
+  const engageFallback = (deviceType, failure) => {
+    const result = accountJwt(deviceType, failure);
+    log(describeAccountJwtFallback(result.auth_reason));
+    return result;
   };
 
   const pcf = await attempt(AUTH_MODES.PCF);
   if (pcf.ok) return pcf;
 
+  const appRefusal = isApplicationRefusal(pcf.failure);
+  if (appRefusal && looksLikeAccountJwt(classified)) {
+    return engageFallback(AUTH_MODES.PCF, pcf.failure);
+  }
+
   const looksLikePortal = /user does not exist|invalid.*token|credential/i.test(pcf.error ?? "");
   if (looksLikePortal) {
     const web = await attempt(AUTH_MODES.WEB);
     if (web.ok) return web;
+    if (isApplicationRefusal(web.failure) && looksLikeAccountJwt(classified)) {
+      return engageFallback(AUTH_MODES.WEB, web.failure);
+    }
     throw new Error(web.error ?? `web fallback failed for token`);
+  }
+
+  if (appRefusal) {
+    // Refused at the application level, but the pasted value is not a 3-part
+    // account JWT: storing it as XX-Token would only fail later on every /v2
+    // call. Say what to paste instead.
+    throw new Error(
+      `${pcf.error} — the value is not a 3-part account JWT, so it cannot stand in as XX-Token. ` +
+        `On Anycubic Slicer Next >= 2.0.0.3 paste the Slicer access_token ` +
+        `(see docs/research/cloud-auth-2026-11-18.md).`,
+    );
   }
   throw new Error(pcf.error ?? "login failed");
 }
@@ -307,20 +407,41 @@ async function runTokenCrypt(action, env) {
 export async function saveStoredToken(accessToken, options = {}) {
   const dataDir = options.dataDir ?? defaultDataDir();
   const encrypted = await runTokenCrypt("encrypt", { TOKEN_CRYPT_PLAINTEXT: accessToken });
-  const record = { encrypted, ...buildTokenRecord(accessToken) };
+  const record = {
+    encrypted,
+    ...buildTokenRecord(accessToken),
+    // Mode + how the XX-Token was obtained: metadata only, never the secret.
+    // The MCP TokenStore ignores unknown keys, so `--status` can report the
+    // limitation (web = no MQTT) without a second file.
+    ...(options.mode ? { mode: options.mode } : {}),
+    ...(options.mqtt !== undefined ? { mqtt: options.mqtt } : {}),
+    ...(options.authSource ? { auth_source: options.authSource } : {}),
+  };
   await mkdir(dataDir, { recursive: true });
   const file = path.join(dataDir, "cloud-token.json");
   const tmp = file + ".tmp";
-  await writeFile(tmp, JSON.stringify(record, null, 2), { mode: 0o600 });
+  // serializeTokenRecord is the one writer both auth lanes use: BOM-free by
+  // contract, because JSON.parse throws on U+FEFF and the store then reads as
+  // "no token stored" forever.
+  await writeFile(tmp, serializeTokenRecord(record), { mode: 0o600 });
   await import("node:fs/promises").then((m) => m.rename(tmp, file));
   return record;
 }
 
 export async function loadStoredToken(options = {}) {
   const dataDir = options.dataDir ?? defaultDataDir();
+  const file = path.join(dataDir, "cloud-token.json");
   try {
-    const raw = await readFile(path.join(dataDir, "cloud-token.json"), "utf8");
-    const record = JSON.parse(raw);
+    const raw = await readFile(file, "utf8");
+    const { record, bom } = parseTokenRecordText(raw);
+    if (bom) {
+      // Repaired, not tolerated silently (same contract as the MCP TokenStore):
+      // the operator gets one line, and the next reader never needs this path.
+      await writeFile(file, serializeTokenRecord(record), { mode: 0o600 }).catch(() => {});
+      console.error(
+        "[cloud] token store: cloud-token.json carried a UTF-8 BOM; rewritten without it",
+      );
+    }
     if (!record?.encrypted) return { stored: false };
     return {
       stored: true,
@@ -330,6 +451,7 @@ export async function loadStoredToken(options = {}) {
       ...(record.capturedAt ? { captured_at: record.capturedAt } : {}),
       ...(record.mode ? { mode: record.mode } : {}),
       ...(record.mqtt !== undefined ? { mqtt: record.mqtt } : {}),
+      ...(record.auth_source ? { auth_source: record.auth_source } : {}),
     };
   } catch {
     return { stored: false };
@@ -395,13 +517,22 @@ export async function runInteractiveLogin(options = {}) {
   if (!result.ok) {
     throw new Error(result.error ?? "token inválido");
   }
-  const record = await saveStoredToken(trimmed, {});
+  const record = await saveStoredToken(trimmed, {
+    mode: result.mode,
+    mqtt: result.mqtt,
+    authSource: result.auth_source,
+  });
   const stored = { stored: true, ...record, encrypted: undefined };
   console.log(
     [
       "",
       "✔ Token validado e gravado (DPAPI, utilizador atual).",
       `  modo: ${result.mode}  transport: ${result.transport}`,
+      ...(result.auth_source === AUTH_SOURCE.ACCOUNT_JWT
+        ? [
+            "  auth: account_jwt — o exchange foi recusado (Slicer Next >= 2.0.0.3); o JWT da conta é o XX-Token.",
+          ]
+        : []),
       result.mqtt
         ? "  MQTT: habilitado — pode usar printer_command_send e os tools de controlo."
         : "  MQTT: NÃO habilitado — token web é só polling HTTP (leitura).",
@@ -572,13 +703,22 @@ export async function runIdFlow(options = {}) {
   }
   const result = await validateAccessToken(trimmed, { region, timeoutMs: options.timeoutMs });
   if (!result.ok) throw new Error(result.error ?? "token inválido");
-  const record = await saveStoredToken(trimmed, {});
+  const record = await saveStoredToken(trimmed, {
+    mode: result.mode,
+    mqtt: result.mqtt,
+    authSource: result.auth_source,
+  });
   const stored = { stored: true, ...record, encrypted: undefined };
   console.log(
     [
       "",
       "✔ Token validado e gravado (DPAPI, utilizador atual).",
       `  modo: ${result.mode}  transport: ${result.transport}`,
+      ...(result.auth_source === AUTH_SOURCE.ACCOUNT_JWT
+        ? [
+            "  auth: account_jwt — o exchange foi recusado (Slicer Next >= 2.0.0.3); o JWT da conta é o XX-Token.",
+          ]
+        : []),
       result.mqtt
         ? "  MQTT: habilitado — pode usar printer_command_send e os tools de controlo."
         : "  MQTT: NÃO habilitado — token web é só polling HTTP (leitura).",
@@ -593,18 +733,24 @@ export async function runIdFlow(options = {}) {
 // Ferramenta MCP: auth_setup
 // ---------------------------------------------------------------------------
 
-export function registerAuthSetupTool(server, z) {
-  registerAuthSetupHelper(server, z);
+export function registerAuthSetupTool(server, z, deps = {}) {
+  registerAuthSetupHelper(server, z, deps);
   registerAuthIdFlowTool(server, z);
 }
 
-export function registerAuthSetupHelper(server, z) {
+/**
+ * @param {object} deps injectable for fixture tests: { validateAccessToken, saveStoredToken }.
+ *   Production passes nothing — the real network client and the DPAPI store.
+ */
+export function registerAuthSetupHelper(server, z, deps = {}) {
+  const validate = deps.validateAccessToken ?? validateAccessToken;
+  const save = deps.saveStoredToken ?? saveStoredToken;
   server.registerTool(
     "auth_setup",
     {
       title: "Set up Anycubic cloud auth (first install, no slicer required)",
       description:
-        "Validate and store an Anycubic access_token / XX-Token pasted by the user (or provided as access_token). The token is NEVER echoed back: the tool validates it against loginWithAccessToken, detects pcf (MQTT-enabled) vs web (http-polling-only) mode, and stores it DPAPI-encrypted in the same token store used by the rest of the bridge. Requires a human to supply a token obtained from the Anycubic slicer or portal (captcha/2FA make email+password login impossible).",
+        'Validate and store an Anycubic access_token / XX-Token pasted by the user (or provided as access_token). The token is NEVER echoed back. The session exchange runs first; on Slicer Next >= 2.0.0.3, which refuses it at the application level, the account JWT itself becomes the XX-Token and the result says so (`auth_source: "account_jwt"` + `auth_reason`). Mode pcf enables MQTT; mode web is HTTP-polling-only. The token is stored DPAPI-encrypted in the same token store the rest of the bridge reads. Requires a human to supply a token obtained from the Anycubic slicer or portal (captcha/2FA make email+password login impossible).',
       inputSchema: z
         .object({
           access_token: z
@@ -628,6 +774,10 @@ export function registerAuthSetupHelper(server, z) {
           sub: z.string().optional(),
           expires_at: z.string().optional(),
           stored_at: z.string().optional(),
+          // How the XX-Token is obtained: a workbench session (legacy exchange)
+          // or the account JWT itself (Slicer Next >= 2.0.0.3).
+          auth_source: z.enum(["session", "account_jwt"]).optional(),
+          auth_reason: z.string().optional(),
           message: z.string().optional(),
           error: z.string().optional(),
         })
@@ -641,12 +791,17 @@ export function registerAuthSetupHelper(server, z) {
     },
     async ({ access_token, region, timeout_ms }) => {
       try {
-        const validated = await validateAccessToken(access_token, {
+        const validated = await validate(access_token, {
           region,
           timeoutMs: timeout_ms,
         });
         if (!validated.ok) throw new Error(validated.error ?? "token inválido");
-        const record = await saveStoredToken(access_token, {});
+        const record = await save(access_token, {
+          mode: validated.mode,
+          mqtt: validated.mqtt,
+          authSource: validated.auth_source,
+        });
+        const fallback = validated.auth_source === AUTH_SOURCE.ACCOUNT_JWT;
         return {
           ok: true,
           stored: true,
@@ -661,9 +816,14 @@ export function registerAuthSetupHelper(server, z) {
           ...(record.sub ? { sub: record.sub } : {}),
           ...(record.expiresAt ? { expires_at: record.expiresAt } : {}),
           stored_at: record.capturedAt,
-          message: validated.mqtt
-            ? "Token validated and stored (pcf mode: MQTT control enabled)."
-            : "Token validated and stored (web mode: HTTP polling only, MQTT NOT enabled).",
+          ...(validated.auth_source ? { auth_source: validated.auth_source } : {}),
+          ...(validated.auth_reason ? { auth_reason: validated.auth_reason } : {}),
+          message: fallback
+            ? `Token validated and stored (${validated.mode} mode). Slicer Next refused the session exchange, so the account JWT itself is the XX-Token.` +
+              (validated.mqtt ? " MQTT control enabled." : " HTTP polling only, MQTT NOT enabled.")
+            : validated.mqtt
+              ? "Token validated and stored (pcf mode: MQTT control enabled)."
+              : "Token validated and stored (web mode: HTTP polling only, MQTT NOT enabled).",
         };
       } catch (error) {
         return {

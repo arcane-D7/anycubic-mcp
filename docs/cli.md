@@ -126,8 +126,8 @@ anycubic status <DEV_ID>@<LAN_IP> --json | jq -r '.status.mc_percent'
   rendering, in human and `--json` mode alike: any key matching
   `token|secret|password|credential|authorization|cookie|api_key|private_key|access_code|jwt`
   becomes `[redacted]`, and JWT-shaped strings are masked wherever they appear.
-  This matters because the cloud tools include the session token in their
-  structured result; `account_devices` does exactly that.
+  This is defence in depth: the cloud tools no longer return the session token
+  at all unless asked (`include_token: true`), and the CLI never asks.
 - `account status` asks for `include_token: false` and shows metadata only
   (stored, email, sub, expiry, capture time, source, region). The redaction above
   is the second line of defence, not the first.

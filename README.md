@@ -89,6 +89,20 @@ keeps `/work/printer/getPrinters` as a fallback. The fallback is never silent:
 the server logs one `[cloud] …` line saying why. Protocol record:
 `docs/research/cloud-auth-2026-11-18.md`.
 
+The same decision covers **first install**: `auth_setup` and
+`node scripts/auth-login.mjs` share one implementation
+(`scripts/cloud-auth-shared.mjs`), so a new user on 2.0.0.3 completes setup
+instead of hitting "no token returned from loginWithAccessToken". Their result
+carries `auth_source` + `auth_reason`, the log line names the fallback, and the
+store records the mode. A transport or HTTP error still fails loudly and stores
+nothing.
+
+**Token redaction (behaviour change).** `account_login`, `account_devices` and
+`account_files` no longer echo the resolved `XX-Token`; under the fallback that
+value is the long-lived account JWT. Pass `include_token: true` to read it,
+exactly like `account_token_status`. A client that parsed `token` out of those
+results keeps working only after opting in.
+
 ### Cloud MQTT needs the operator's TLS identity
 
 `resources/mqtt-tls/` ships **empty** (only a README). Cloud MQTT requires the slicer's

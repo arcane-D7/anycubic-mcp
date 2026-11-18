@@ -32,6 +32,23 @@ import fs from "node:fs";
 import path from "node:path";
 import mqtt from "mqtt";
 import { decodeJwtPayload } from "./auth-login.mjs";
+import {
+  AUTH_SOURCE,
+  accountJwtFallback,
+  describeAccountJwtFallback,
+  describeExchangeRefusal,
+  isApplicationRefusal,
+} from "./cloud-auth-shared.mjs";
+export {
+  AUTH_SOURCE,
+  accountJwtFallback,
+  describeAccountJwtFallback,
+  describeExchangeRefusal,
+  isApplicationRefusal,
+  parseTokenRecordText,
+  readTokenRecordFile,
+  serializeTokenRecord,
+} from "./cloud-auth-shared.mjs";
 
 const AC_AID = "f9b3528877c94d5c9c5af32245db46ef";
 const AC_SEC = "0cf75926606049a3937f56b0373b99fb";
@@ -218,6 +235,7 @@ export class AnycubicCloud {
       throw new AnycubicCloudError("access_token is required for login()", "NO_ACCESS_TOKEN");
     }
     let sessionReason = null;
+    let refusal = null;
     try {
       const res = await this.#api("POST", "/v3/public/loginWithAccessToken", {
         body: { device_type: "pcf", access_token: this.access_token },
@@ -226,24 +244,34 @@ export class AnycubicCloud {
       const token = res?.data?.token ?? res?.data?.access_token;
       if (token) {
         this.xxToken = token;
-        this.authSource = "session";
+        this.authSource = AUTH_SOURCE.SESSION;
       } else {
-        sessionReason = `loginWithAccessToken returned no session token (code=${res?.code ?? "unknown"}; ${String(res?.msg ?? "no message").slice(0, 120)})`;
+        refusal = {
+          http: 200,
+          code: res?.code ?? "unknown",
+          message:
+            `loginWithAccessToken returned no session token ` +
+            `(code=${res?.code ?? "unknown"}; ${String(res?.msg ?? "no message").slice(0, 120)})`,
+        };
       }
     } catch (error) {
-      const appRefusal = error instanceof AnycubicCloudError && error.http === 200;
-      if (!appRefusal) throw error;
-      sessionReason = `loginWithAccessToken refused the exchange (code=${error.code ?? "unknown"}; ${error.message})`;
+      // Only an application-level refusal (HTTP 200, no token) is a fallback
+      // signal; a transport fault or a real HTTP error keeps failing loudly.
+      if (!isApplicationRefusal(error)) throw error;
+      refusal = {
+        http: 200,
+        code: error.code ?? "unknown",
+        message: `loginWithAccessToken refused the exchange (code=${error.code ?? "unknown"}; ${error.message})`,
+      };
     }
 
     if (!this.xxToken) {
-      this.xxToken = this.access_token;
-      this.authSource = "account_jwt";
-      this.authReason = sessionReason;
-      this.log(
-        `cloud auth: ${sessionReason} — using the account access_token directly as XX-Token ` +
-          `(Slicer Next >= 2.0.0.3 serves /v2/* with it; the session exchange is kept first for older slicers)`,
-      );
+      sessionReason = describeExchangeRefusal(refusal);
+      const fallback = accountJwtFallback(this.access_token, sessionReason);
+      this.xxToken = fallback.token;
+      this.authSource = fallback.authSource;
+      this.authReason = fallback.authReason;
+      this.log(describeAccountJwtFallback(sessionReason));
     }
 
     // Identity is best effort: /user/profile/userInfo is a workbench route and
@@ -588,39 +616,10 @@ export function mapPrinterEntry(item) {
 }
 
 // ---- DPAPI token-store record (BOM safety) -----------------------------
-// cloud-token.json is JSON.parse'd by the MCP TokenStore and by
-// scripts/auth-login.mjs. JSON.parse throws on a leading BOM (U+FEFF), so a
-// store written by an editor or a copy/paste can look "empty" forever. This
-// module owns the record format: writes never emit a BOM, and a read strips
-// one and reports it so the caller can rewrite the file clean.
-
-/** Serialise a token record exactly as the store writes it — never with a BOM. */
-export function serializeTokenRecord(record) {
-  const text = JSON.stringify(record, null, 2);
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-}
-
-/**
- * Parse a token record, tolerating (and reporting) a leading BOM.
- * @returns {{record: any, bom: boolean}} `bom` true means the file must be rewritten.
- */
-export function parseTokenRecordText(raw) {
-  const text = String(raw ?? "");
-  const bom = text.charCodeAt(0) === 0xfeff;
-  return { record: JSON.parse(bom ? text.slice(1) : text), bom };
-}
-
-/**
- * Read a token-store file, rewriting it without a BOM when one is found.
- * A corrupt file keeps failing to JSON.parse — the caller decides how loud.
- * @returns {Promise<{record: any, repaired: boolean}>}
- */
-export async function readTokenRecordFile(file) {
-  const raw = await fs.promises.readFile(file, "utf8");
-  const { record, bom } = parseTokenRecordText(raw);
-  if (bom) await fs.promises.writeFile(file, serializeTokenRecord(record), { mode: 0o600 });
-  return { record, repaired: bom };
-}
+// The record format lives in `cloud-auth-shared.mjs` so the client, the
+// first-install CLI and `auth_setup` write and read the same bytes; it is
+// re-exported above. cloud-token.json must never carry a BOM: JSON.parse
+// throws on U+FEFF, so a BOM'd store would read as "no token stored" forever.
 
 export function findSlicerJwt(logDir) {
   // Agnostic resolution: expand %APPDATA% and ignore inert placeholder paths

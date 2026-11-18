@@ -107,6 +107,22 @@ online}`). `/work/printer/getPrinters` stays as the fallback and is only
    read** (stripped, rewritten without it, one log line) instead of being
    silently ignored.
 
+Follow-up 2026-11-18: auth_setup fallback + token redaction default. Closing the
+two gaps the first pass left open:
+
+- `scripts/auth-login.mjs` (`auth_setup` and the standalone CLI) now makes the
+  same exchange-first decision as the client: a 2.0.0.3 application-level
+  refusal falls back to the account JWT, so a NEW user can complete setup. The
+  decision, the reason text and the log line live in one module
+  (`scripts/cloud-auth-shared.mjs`) used by both lanes; transport/HTTP failures
+  still fail loudly and store nothing. A non-JWT value (portal XX-Token) is
+  refused with a next step rather than stored as if it were the account JWT.
+- `account_login`, `account_devices` and `account_files` no longer echo the
+  resolved XX-Token by default — under the fallback that is the long-lived
+  account JWT. `include_token: true` restores it, matching
+  `account_token_status` (`include_token: false`). This is a **behaviour change**
+  for any client that parsed `token` from those results.
+
 ## What is not verified
 
 Stated plainly, so nobody mistakes fixture coverage for hardware truth:
@@ -153,11 +169,14 @@ the envelope shape (key names only, values redacted) and extend
 
 ## Code map
 
-| Where                                         | What                                                                                |
-| --------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `vendor/server.mjs` (`// src/cloud.ts`)       | exchange-first `loginWithAccessToken` with the JWT fallback; v2-first `getPrinters` |
-| `vendor/server.mjs` (`// src/token-store.ts`) | BOM-free write; BOM repair on read                                                  |
-| `vendor/server.mjs` (`// src/index.ts`)       | `account_login` / `account_devices` report `auth_source` + `auth_reason`            |
-| `scripts/anycubic-cloud.mjs`                  | same protocol in the hand-written client; exported mapping + token-record helpers   |
-| `tests/cloud-auth-slicer2.test.mjs`           | client: fallback, v2 mapping, old-path fallback, BOM repair                         |
-| `tests/vendor-cloud-auth.test.mjs`            | the same behaviours read out of `vendor/server.mjs` itself                          |
+| Where                                         | What                                                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `vendor/server.mjs` (`// src/cloud.ts`)       | exchange-first `loginWithAccessToken` with the JWT fallback; v2-first `getPrinters`                       |
+| `vendor/server.mjs` (`// src/token-store.ts`) | BOM-free write; BOM repair on read                                                                        |
+| `vendor/server.mjs` (`// src/index.ts`)       | `account_login` / `account_devices` report `auth_source` + `auth_reason`; `token` is `include_token`-only |
+| `scripts/auth-login.mjs`                      | `auth_setup` + CLI use the same fallback; one log line; DPAPI store BOM repair                            |
+| `scripts/cloud-auth-shared.mjs`               | the one fallback decision / reason / log line + token-record format for `scripts/`                        |
+| `scripts/anycubic-cloud.mjs`                  | same protocol in the hand-written client; exported mapping + token-record helpers                         |
+| `tests/cloud-auth-slicer2.test.mjs`           | client: fallback, v2 mapping, old-path fallback, BOM repair                                               |
+| `tests/vendor-cloud-auth.test.mjs`            | the same behaviours read out of `vendor/server.mjs` itself, incl. token redaction                         |
+| `tests/auth-setup.test.mjs`                   | `auth_setup`: fallback engages/visibly, legacy path, loud transport failure                               |

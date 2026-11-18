@@ -1,6 +1,6 @@
 # Primeira instalação — autenticação sem o Anycubic Slicer Next instalado
 
-> Status: implementado (batch 2026-09-11b). Suite: 116 testes + smoke 79 tools.
+> Status: implementado (batch 2026-09-11b; auth_setup com fallback 2.0.0.3 em 2026-11-18). Suite: unit offline + smoke 115 tools.
 
 Este guia explica como um utilizador obtém as keys de auth pela primeira vez
 **sem ter o Slicer Next instalado**, usando apenas o terminal, e como tudo é
@@ -103,12 +103,26 @@ Além do script interativo, o bridge expõe a ferramenta `auth_setup` (input
 ajudar o utilizador) podem usá-la; o token é passado diretamente e o output
 não o repete.
 
+Em **Slicer Next >= 2.0.0.3** o exchange de sessão é recusado pelo servidor
+(HTTP 200, `code 0`, sem token). O `auth_setup` (e o script) usa então o próprio
+JWT da conta como `XX-Token` — o mesmo comportamento dos tools de cloud — e
+di-lo no resultado: `auth_source: "account_jwt"` + `auth_reason`, mais uma linha
+de log. O modo continua `pcf` (MQTT habilitado). Erros de rede/HTTP não caem no
+fallback: falham e nada é gravado. Um valor que não seja um JWT de 3 partes
+(token do portal) é recusado com a indicação do token a colar.
+
 ```jsonc
 // exemplo de chamada
 { "access_token": "<token do utilizador>", "region": "en" }
-// resposta (sem segredo):
+// resposta (sem segredo) — slicer antigo:
 { "ok": true, "stored": true, "mode": "pcf", "transport": "cloud_mqtt",
-  "mqtt": true, "user_id": 42, "region": "en", "message": "..." }
+  "mqtt": true, "user_id": 42, "region": "en", "auth_source": "session",
+  "message": "..." }
+// resposta — Slicer Next >= 2.0.0.3 (exchange recusado):
+{ "ok": true, "stored": true, "mode": "pcf", "transport": "cloud_mqtt",
+  "mqtt": true, "region": "en", "auth_source": "account_jwt",
+  "auth_reason": "loginWithAccessToken refused the exchange (code=0; ...)",
+  "message": "... the account JWT itself is the XX-Token ..." }
 ```
 
 ## 4. Segurança
@@ -117,8 +131,9 @@ não o repete.
   `scripts/token-crypt.ps1` — inacessível a outros utilizadores do sistema.
 - O formato do ficheiro é idêntico ao `TokenStore` compilado em
   `dist/server.mjs` (`.json` com `{encrypted, capturedAt, sub?, email?,
-expiresAt?}`), pelo que os tools `account_token_status` / `account_login`
-  continuam a funcionar sem alterações.
+expiresAt?, mode?, mqtt?, auth_source?}` — os últimos três são metadados que o
+  TokenStore ignora e que o `--status` mostra), pelo que os tools
+  `account_token_status` / `account_login` continuam a funcionar sem alterações.
 - Nunca cole tokens em chats/assistentes; o caminho por terminal é o
   recomendado precisamente para o segredo não circular.
 - Expiração: tokens slicer duram ~90 dias. Ao expirar, refaça o passo 3.
@@ -127,6 +142,6 @@ expiresAt?}`), pelo que os tools `account_token_status` / `account_login`
 
 ```powershell
 node scripts/auth-login.mjs --status        # deverá mostrar stored:true + metadados
-node scripts/smoke.mjs                      # 79 tools, tudo verde
-node --test tests/*.test.mjs                # 116 testes
+node scripts/smoke.mjs                      # 115 tools, tudo verde
+node --test tests/*.test.mjs                # suite unit (offline)
 ```

@@ -549,6 +549,10 @@ var accountLoginInputSchema = z
     access_token: z.string().min(1).max(2048).optional(),
     region: z.enum(["en", "cn"]).default("en"),
     timeout_ms: z.number().int().min(500).max(3e4).default(15e3),
+    // The resolved XX-Token is a long-lived credential (under the Slicer Next
+    // 2.0.0.3 fallback it IS the account JWT). It is not returned unless the
+    // caller asks for it explicitly.
+    include_token: z.boolean().default(false),
   })
   .strict();
 var accountDevicesInputSchema = z
@@ -557,6 +561,8 @@ var accountDevicesInputSchema = z
     timeout_ms: z.number().int().min(500).max(3e4).default(15e3),
     /** Optional status filter: true = online only, false = offline only, undefined = all. */
     device_status: z.boolean().optional(),
+    /** Return the resolved XX-Token too (default: omitted — see account_login). */
+    include_token: z.boolean().default(false),
   })
   .strict();
 var accountFilesInputSchema = z
@@ -564,6 +570,8 @@ var accountFilesInputSchema = z
     region: z.enum(["en", "cn"]).default("en"),
     timeout_ms: z.number().int().min(500).max(3e4).default(15e3),
     query: z.string().max(180).optional(),
+    /** Return the resolved XX-Token too (default: omitted — see account_login). */
+    include_token: z.boolean().default(false),
   })
   .strict();
 var accountCloudDiagnosticsInputSchema = z
@@ -639,6 +647,9 @@ var accountPrintInputSchema = z
 var accountInfoOutputSchema = z
   .object({
     ok: z.boolean(),
+    // Present only when the caller passed include_token: true. The XX-Token is
+    // a long-lived credential (the account JWT under the 2.0.0.3 fallback), so
+    // omitting it is the default, exactly like account_token_status.
     token: z.string().optional(),
     user_id: z.number().int().optional(),
     user_email: z.string().optional(),
@@ -655,8 +666,10 @@ var accountDevicesOutputSchema = z
     ok: z.boolean(),
     count: z.number().int().optional(),
     devices: z.array(unknownRecord).optional(),
+    // Present only with include_token: true.
     token: z.string().optional(),
     auth_source: z.enum(["session", "account_jwt"]).optional(),
+    auth_reason: z.string().optional(),
     error: z.string().optional(),
   })
   .strict();
@@ -6585,7 +6598,7 @@ server.registerTool(
   {
     title: "Login to the Anycubic cloud account",
     description:
-      "Exchange the Slicer Next access_token (JWT from the token store, param, or ANYCUBIC_CLOUD_TOKEN env) for a working cloud session token. Required before account_devices / account_print.",
+      "Exchange the Slicer Next access_token (JWT from the token store, param, or ANYCUBIC_CLOUD_TOKEN env) for a working cloud session token. Required before account_devices / account_print. On Slicer Next >= 2.0.0.3 the exchange is refused and the account JWT itself becomes the XX-Token (`auth_source: \"account_jwt\"` + `auth_reason`). The token is NOT returned unless include_token is true.",
     inputSchema: accountLoginInputSchema,
     outputSchema: accountInfoOutputSchema,
     annotations: {
@@ -6595,7 +6608,7 @@ server.registerTool(
       openWorldHint: true,
     },
   },
-  async ({ access_token, region, timeout_ms }) => {
+  async ({ access_token, region, timeout_ms, include_token }) => {
     try {
       // account_login is an explicit refresh request; never reuse a prior
       // session that may belong to a different Slicer account.
@@ -6604,7 +6617,10 @@ server.registerTool(
       const info = await getUserInfo(session, { region, timeoutMs: timeout_ms });
       return textAndStructured({
         ok: true,
-        token: session.token,
+        // Fail closed: the XX-Token is a long-lived credential (under the
+        // 2.0.0.3 fallback it is the account JWT). Opt-in only, like
+        // account_token_status.
+        ...(include_token ? { token: session.token } : {}),
         user_id: info.userId,
         user_email: info.userEmail,
         region: session.region,
@@ -6621,12 +6637,12 @@ server.registerTool(
   {
     title: "List printers connected to the Anycubic account",
     description:
-      "List the printers bound to the logged-in Anycubic account (remote print by account, not LAN). Returns printer id, key (dev_id), machine type, and online status.",
+      "List the printers bound to the logged-in Anycubic account (remote print by account, not LAN). Returns printer id, key (dev_id), machine type, and online status, plus auth_source. The resolved XX-Token is NOT returned unless include_token is true.",
     inputSchema: accountDevicesInputSchema,
     outputSchema: accountDevicesOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
-  async ({ region, timeout_ms, device_status }) => {
+  async ({ region, timeout_ms, device_status, include_token }) => {
     try {
       const session = await resolveCloudSession(void 0, region, timeout_ms);
       const devices = await getPrinters(session, { region, timeoutMs: timeout_ms });
@@ -6638,8 +6654,9 @@ server.registerTool(
         ok: true,
         count: visible.length,
         devices: visible,
-        token: session.token,
+        ...(include_token ? { token: session.token } : {}),
         ...(session.authSource ? { auth_source: session.authSource } : {}),
+        ...(session.authReason ? { auth_reason: session.authReason } : {}),
       });
     } catch (error) {
       return errorResult(error);
@@ -6651,12 +6668,12 @@ server.registerTool(
   {
     title: "List files on the Anycubic cloud account",
     description:
-      "List the files on the logged-in Anycubic cloud account (the 'My Files' shelf that backs remote print by account). Returns file id, key, name, type, and size so you can pick a file_key/file_id for account_print.",
+      "List the files on the logged-in Anycubic cloud account (the 'My Files' shelf that backs remote print by account). Returns file id, key, name, type, and size so you can pick a file_key/file_id for account_print. The resolved XX-Token is NOT returned unless include_token is true.",
     inputSchema: accountFilesInputSchema,
     outputSchema: accountFilesOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   },
-  async ({ region, timeout_ms, query }) => {
+  async ({ region, timeout_ms, query, include_token }) => {
     try {
       const session = await resolveCloudSession(void 0, region, timeout_ms);
       let files = await getCloudFiles(session, { region, timeoutMs: timeout_ms });
@@ -6664,7 +6681,12 @@ server.registerTool(
         const q = query.toLowerCase();
         files = files.filter((file) => file.name.toLowerCase().includes(q));
       }
-      return textAndStructured({ ok: true, count: files.length, files, token: session.token });
+      return textAndStructured({
+        ok: true,
+        count: files.length,
+        files,
+        ...(include_token ? { token: session.token } : {}),
+      });
     } catch (error) {
       return errorResult(error);
     }

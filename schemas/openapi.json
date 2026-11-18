@@ -4473,6 +4473,10 @@
             "type": "integer",
             "minimum": 500,
             "maximum": 30000
+          },
+          "include_token": {
+            "default": false,
+            "type": "boolean"
           }
         },
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4518,6 +4522,10 @@
             "maximum": 30000
           },
           "device_status": {
+            "type": "boolean"
+          },
+          "include_token": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -4570,6 +4578,10 @@
           "query": {
             "type": "string",
             "maxLength": 180
+          },
+          "include_token": {
+            "default": false,
+            "type": "boolean"
           }
         },
         "$schema": "http://json-schema.org/draft-07/schema#",
