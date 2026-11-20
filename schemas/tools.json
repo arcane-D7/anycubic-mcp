@@ -297,6 +297,47 @@
       "outputSchema": {}
     },
     {
+      "name": "account_endpoint_call",
+      "readOnlyHint": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "endpoint_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "params": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "access_token": {
+            "type": "string"
+          }
+        },
+        "required": ["endpoint_id"],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "account_endpoint_catalog",
+      "readOnlyHint": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
       "name": "account_file_upload",
       "readOnlyHint": false,
       "inputSchema": {
@@ -788,6 +829,42 @@
       "outputSchema": {}
     },
     {
+      "name": "ace_raw_report",
+      "readOnlyHint": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "printer_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "include_extfilbox": {
+            "default": true,
+            "type": "boolean"
+          },
+          "include_http": {
+            "default": true,
+            "type": "boolean"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 30000
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "resources_dir": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
       "name": "ace_refresh_slot",
       "readOnlyHint": false,
       "inputSchema": {
@@ -830,6 +907,55 @@
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "outputSchema": {}
+    },
+    {
+      "name": "ace_set_slot",
+      "readOnlyHint": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "box_id": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9
+          },
+          "slot_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9
+          },
+          "material_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "color": {
+            "minItems": 3,
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "sku": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "confirm": {
+            "default": false,
+            "type": "boolean"
+          },
+          "reply_timeout_ms": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 30000
+          }
+        },
+        "required": ["slot_index", "material_type", "color"],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
     },
     {
       "name": "audit_gcode_recovery",
@@ -1712,6 +1838,99 @@
       "outputSchema": {}
     },
     {
+      "name": "print_pause",
+      "readOnlyHint": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "printer_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "resources_dir": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "confirm": {
+            "default": false,
+            "type": "boolean"
+          },
+          "confirm_word": {
+            "type": "string"
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {}
+    },
+    {
+      "name": "print_resume",
+      "readOnlyHint": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "printer_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "resources_dir": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "confirm": {
+            "default": false,
+            "type": "boolean"
+          },
+          "confirm_word": {
+            "type": "string"
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {}
+    },
+    {
+      "name": "print_stop",
+      "readOnlyHint": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "printer_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "resources_dir": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "confirm": {
+            "default": false,
+            "type": "boolean"
+          },
+          "confirm_word": {
+            "type": "string"
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {}
+    },
+    {
       "name": "printer_capability_catalog",
       "readOnlyHint": true,
       "inputSchema": {
@@ -2141,6 +2360,36 @@
       "outputSchema": {}
     },
     {
+      "name": "printer_gcode_resolve",
+      "readOnlyHint": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "printer_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "resources_dir": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "gcode_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["gcode_id"],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "outputSchema": {}
+    },
+    {
       "name": "printer_get_snapshot",
       "readOnlyHint": true,
       "inputSchema": {
@@ -2172,36 +2421,6 @@
             "maximum": 60000
           }
         },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "outputSchema": {}
-    },
-    {
-      "name": "printer_gcode_resolve",
-      "readOnlyHint": true,
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "printer_id": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "access_token": {
-            "type": "string",
-            "maxLength": 4096
-          },
-          "resources_dir": {
-            "type": "string",
-            "maxLength": 1024
-          },
-          "gcode_id": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["gcode_id"],
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
       "outputSchema": {}
@@ -3051,99 +3270,6 @@
           "resources_dir": {
             "type": "string",
             "maxLength": 1024
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "outputSchema": {}
-    },
-    {
-      "name": "print_pause",
-      "readOnlyHint": false,
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "printer_id": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "access_token": {
-            "type": "string",
-            "maxLength": 4096
-          },
-          "resources_dir": {
-            "type": "string",
-            "maxLength": 1024
-          },
-          "confirm": {
-            "default": false,
-            "type": "boolean"
-          },
-          "confirm_word": {
-            "type": "string"
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "outputSchema": {}
-    },
-    {
-      "name": "print_resume",
-      "readOnlyHint": false,
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "printer_id": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "access_token": {
-            "type": "string",
-            "maxLength": 4096
-          },
-          "resources_dir": {
-            "type": "string",
-            "maxLength": 1024
-          },
-          "confirm": {
-            "default": false,
-            "type": "boolean"
-          },
-          "confirm_word": {
-            "type": "string"
-          }
-        },
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "outputSchema": {}
-    },
-    {
-      "name": "print_stop",
-      "readOnlyHint": false,
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "printer_id": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "access_token": {
-            "type": "string",
-            "maxLength": 4096
-          },
-          "resources_dir": {
-            "type": "string",
-            "maxLength": 1024
-          },
-          "confirm": {
-            "default": false,
-            "type": "boolean"
-          },
-          "confirm_word": {
-            "type": "string"
           }
         },
         "$schema": "http://json-schema.org/draft-07/schema#"
