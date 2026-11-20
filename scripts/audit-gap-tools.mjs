@@ -364,6 +364,12 @@ export function registerAuditGapTools(server, z, { manager, resolvePrinter } = {
             ai_detect: args.ai_detect,
             camera_timelapse: args.camera_timelapse,
             live_state: args.live_state,
+            // Forward the confirmation: the tool's outer gate already validated
+            // confirm:true + EXECUTE, but cloudPrintStart re-checks them and
+            // the inner object never carried them (the tool was unusable: every
+            // confirmed call died at the inner gate). Found live 2026-11-18.
+            confirm: args.confirm,
+            confirm_word: args.confirm_word,
             ams: args.use_ams
               ? {
                   ams_box_mapping: args.ams_box_mapping

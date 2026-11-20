@@ -1422,3 +1422,156 @@ export function summarizeCatalog() {
     bySafety: Object.freeze(bySafety),
   };
 }
+
+// ---------------------------------------------------------------------------
+// MCP registration (wired by the parent into vendor/server.mjs; the module
+// stays a zod-only leaf so the frozen bundle can import it without mqtt).
+// ---------------------------------------------------------------------------
+
+/** Thin view of one catalog row for list responses (params only on demand). */
+function rowView(entry) {
+  return {
+    id: entry.id,
+    method: entry.method,
+    path: entry.path,
+    family: entry.family,
+    safety: entry.safety,
+    covered: Boolean(entry.covered),
+    purpose: entry.purpose ?? "",
+  };
+}
+
+export function registerCloudEndpointTools(server, z, { manager } = {}) {
+  // ---- account_endpoint_catalog ------------------------------------------
+  server.registerTool(
+    "account_endpoint_catalog",
+    {
+      title: "Cloud workbench endpoint catalog (93 routes)",
+      description:
+        "Read-only, offline. The complete 93-endpoint surface the Slicer Next 2.0.0.3 SDK registers (source: the cloud_sdk_cpp.dll registration table, docs/research/slicer-binary-surface-2026-11-18.md). Each row: id, method, path, family, safety class (read/write/destructive), coverage flag and purpose. Methods for 65 routes are inferred from path semantics and never live-validated; read is the only class safe to call blind. Filter with family or id (id returns the full entry including params).",
+      inputSchema: {
+        family: z.string().optional(),
+        id: z.string().optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ family, id }) => {
+      let rows = CLOUD_ENDPOINTS;
+      if (family) rows = rows.filter((e) => e.family === family);
+      if (id) {
+        rows = rows.filter((e) => e.id === id);
+        if (rows.length === 0) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `unknown endpoint id "${id}" — call account_endpoint_catalog without filters to list all ${CLOUD_ENDPOINTS.length}`,
+              },
+            ],
+          };
+        }
+      }
+      const detailed = Boolean(id);
+      const endpoints = rows.map((e) => (detailed ? e : rowView(e)));
+      const out = {
+        ok: true,
+        ...summarizeCatalog(),
+        filter: { family: family ?? null, id: id ?? null },
+        endpoints,
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(out) }],
+        structuredContent: out,
+      };
+    },
+  );
+
+  // ---- account_endpoint_call ---------------------------------------------
+  server.registerTool(
+    "account_endpoint_call",
+    {
+      title: "Call one catalogued cloud endpoint",
+      description:
+        'Calls one endpoint from account_endpoint_catalog through the live cloud session. read-class endpoints need no confirmation; write/destructive refuse without params.confirm:true + params.confirm_word:"EXECUTE" (typed CONFIRMATION_REQUIRED). Responses are redacted for credential-shaped values. Most routes are INFERRED (never live-validated): start with read-class, expect surprises, report them.',
+      inputSchema: {
+        endpoint_id: z.string().min(1),
+        params: z.record(z.string(), z.unknown()).optional(),
+        access_token: z.string().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ endpoint_id, params, access_token }) => {
+      // Usage errors fail BEFORE any session work: unknown id and missing
+      // confirmation never need a cloud login (callEndpoint re-validates).
+      const entry = getEndpoint(endpoint_id);
+      if (!entry) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `UNKNOWN_ENDPOINT: unknown cloud endpoint "${endpoint_id}" — call account_endpoint_catalog for the ${CLOUD_ENDPOINTS.length} ids`,
+            },
+          ],
+        };
+      }
+      const wantsConfirm =
+        entry.safety !== SAFETY.READ &&
+        !(params?.confirm === true && params?.confirm_word === CONFIRM_WORD);
+      if (wantsConfirm) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `CONFIRMATION_REQUIRED: ${entry.safety} endpoint ${entry.id} (${entry.method} ${entry.path}) requires params.confirm:true and params.confirm_word:"${CONFIRM_WORD}"`,
+            },
+          ],
+        };
+      }
+      const cloud = manager?.cloud;
+      if (!cloud) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "SESSION_ERROR: No cloud session available." }],
+        };
+      }
+      try {
+        if (!cloud.xxToken) {
+          const token = access_token ?? process.env.ANYCUBIC_CLOUD_TOKEN ?? null;
+          if (token && !cloud.access_token) cloud.access_token = token;
+          await cloud.login();
+        }
+        const result = await callEndpoint(cloud, endpoint_id, {
+          ...(params ?? {}),
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        const code = error?.code ?? "ENDPOINT_ERROR";
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `${code}: ${error?.message ?? String(error)}`,
+            },
+          ],
+        };
+      }
+    },
+  );
+}

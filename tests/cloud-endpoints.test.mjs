@@ -255,3 +255,57 @@ test("param schemas are loose: undeclared keys pass through", () => {
   const parsed = paramSchemaFor(entry).parse({ anything: "goes" });
   assert.equal(parsed.anything, "goes");
 });
+
+test("registration: catalog tool lists 93 routes offline and filters by family", async () => {
+  const registered = {};
+  const server = {
+    registerTool: (name, def, handler) => {
+      registered[name] = { def, handler };
+    },
+  };
+  const z = (await import("zod")).z;
+  const { registerCloudEndpointTools } = await import("../scripts/cloud-endpoints.mjs");
+  registerCloudEndpointTools(server, z, { manager: {} });
+  assert.ok(registered.account_endpoint_catalog, "catalog tool registered");
+  assert.ok(registered.account_endpoint_call, "call tool registered");
+  assert.equal(registered.account_endpoint_catalog.def.annotations.readOnlyHint, true);
+  const res = await registered.account_endpoint_catalog.handler({ family: "v5" });
+  const body = res.structuredContent;
+  assert.equal(body.ok, true);
+  assert.equal(body.total, 93);
+  assert.ok(Array.isArray(body.endpoints) && body.endpoints.length > 0);
+  assert.ok(body.endpoints.every((e) => e.family === "v5"));
+  assert.ok(body.endpoints[0].path.startsWith("/v5/"));
+  assert.equal(typeof body.endpoints[0].safety, "string");
+});
+
+test("registration: call tool surfaces typed endpoint errors without leaking secrets", async () => {
+  const registered = {};
+  const server = { registerTool: (name, def, handler) => (registered[name] = { def, handler }) };
+  const z = (await import("zod")).z;
+  const { registerCloudEndpointTools } = await import("../scripts/cloud-endpoints.mjs");
+  registerCloudEndpointTools(server, z, { manager: {} });
+  const res = await registered.account_endpoint_call.handler({
+    endpoint_id: "does-not-exist",
+    params: {},
+  });
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /^UNKNOWN_ENDPOINT/);
+});
+
+test("registration: call tool refuses write endpoints without EXECUTE", async () => {
+  const registered = {};
+  const server = { registerTool: (name, def, handler) => (registered[name] = { def, handler }) };
+  const z = (await import("zod")).z;
+  const { registerCloudEndpointTools, CLOUD_ENDPOINTS } =
+    await import("../scripts/cloud-endpoints.mjs");
+  registerCloudEndpointTools(server, z, { manager: {} });
+  const write = CLOUD_ENDPOINTS.find((e) => e.safety === "write");
+  const res = await registered.account_endpoint_call.handler({
+    endpoint_id: write.id,
+    params: {},
+  });
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /^CONFIRMATION_REQUIRED/);
+  // No network was touched: the refusal fires before any client call.
+});

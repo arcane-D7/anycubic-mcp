@@ -64,6 +64,7 @@ const USAGE = `anycubic — human subcommands over the Anycubic MCP tool registr
 
 usage:
   anycubic tools                    list registered tools
+  anycubic endpoints [family]       cloud endpoint catalog (93 routes)
   anycubic call <tool> [json-args]  call any tool (escape hatch)
   anycubic printers                 account printers, LAN fallback
   anycubic status <printer>         live printer status
@@ -84,6 +85,14 @@ The CLI drives the real MCP server over stdio; it does not reimplement tool
 logic, and it never prints a token or credential.`;
 
 const HELP = {
+  endpoints: `usage: anycubic endpoints [family] [--json]
+
+The 93-route cloud workbench API catalog (from the Slicer Next 2.0.0.3 SDK
+binary). Optional family filter: v2, v3, v5, work, farm, user. Rows show the
+method, path and safety class; write/destructive routes need
+confirm:true + confirm_word:"EXECUTE" when called through
+\`anycubic call account_endpoint_call\`.`,
+
   tools: `usage: anycubic tools [--json] [--quiet]
 
 List every tool the server registers: one line per tool, name then a short
@@ -214,6 +223,7 @@ const BOOLEAN_OPTIONS = {
 
 const ALLOWED_OPTIONS = {
   tools: [],
+  endpoints: [],
   call: [],
   printers: ["--lan", "--online", "--offline", "--region", "--timeout"],
   status: ["--id", "--ip", "--mqtt-port", "--timeout"],
@@ -417,6 +427,18 @@ export function parseCli(argv) {
     if (parsed.positionals.length) {
       throw new UsageError(`tools takes no arguments (got "${parsed.positionals[0]}")`);
     }
+    return plan;
+  }
+
+  if (command === "endpoints") {
+    const [family, extra] = parsed.positionals;
+    if (extra !== undefined) {
+      throw new UsageError(`endpoints takes at most one family filter (got "${extra}")`);
+    }
+    if (family && !/^[a-z0-9_/-]+$/i.test(family)) {
+      throw new UsageError(`"${family}" is not a family name (letters, digits, slash)`);
+    }
+    plan.family = family ?? null;
     return plan;
   }
 
@@ -908,9 +930,13 @@ export async function connectStdio() {
     import("@modelcontextprotocol/sdk/client/index.js"),
     import("@modelcontextprotocol/sdk/client/stdio.js"),
   ]);
+  // Pass the FULL environment: the MCP SDK's stdio transport launches the
+  // child with a sanitized default env (PATH/HOME/APPDATA only), which strips
+  // ANYCUBIC_* tokens documented in the README as the supported env path.
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [fileURLToPath(new URL("./mcp-entry.mjs", import.meta.url))],
+    env: { ...process.env },
     stderr: "pipe",
   });
   // The server logs to stderr. Keep stdout data-only; surface the log on demand.
@@ -957,6 +983,39 @@ async function callAndUnwrap(runtime, name, args) {
   }
   if (reply?.isError) throw new ToolError(`${name}: ${errorText(reply)}`);
   return unwrapReply(reply);
+}
+
+async function runEndpoints(runtime, plan, io) {
+  const registry = await listRegistry(runtime);
+  const tool = requireTool(["account_endpoint_catalog"], registry, "endpoints");
+  const args = plan.family ? { family: plan.family } : {};
+  const data = await callAndUnwrap(runtime, tool, args);
+  emit(io, plan, data, (safe) => renderEndpoints(safe));
+  return EXIT.OK;
+}
+
+function renderEndpoints(safe) {
+  if (!safe || safe.ok !== true) return renderTree(safe);
+  const lines = [];
+  const fam = Object.entries(safe.byFamily ?? {})
+    .map(([k, v]) => `${k}:${v}`)
+    .join("  ");
+  lines.push(
+    `cloud endpoints: ${safe.total ?? "?"} total, ${safe.covered ?? "?"} covered, ${safe.new ?? "?"} new`,
+  );
+  lines.push(`families: ${fam}`);
+  lines.push("");
+  for (const e of safe.endpoints ?? []) {
+    const mark = e.safety === "read" ? "" : ` [${String(e.safety).toUpperCase()}]`;
+    const cov = e.covered ? "*" : " ";
+    lines.push(`${cov} ${String(e.method).padEnd(6)} ${e.path}${mark}`);
+  }
+  lines.push("");
+  lines.push(
+    "* = already called by the connector; [WRITE]/[DESTRUCTIVE] need confirm:true + EXECUTE.",
+  );
+  lines.push('call one: anycubic call account_endpoint_call \'{"endpoint_id": "..."}\'');
+  return lines.join("\n");
 }
 
 async function runTools(runtime, plan, io) {
@@ -1109,6 +1168,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       switch (plan.command) {
         case "tools":
           return runTools(runtime, plan, io);
+        case "endpoints":
+          return runEndpoints(runtime, plan, io);
         case "call":
           return runCall(runtime, plan, io);
         case "printers":

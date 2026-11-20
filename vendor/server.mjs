@@ -7229,6 +7229,11 @@ registerAuditGapTools(server, z2, { manager: commandManager });
 // cloud files, error list, file preview, order registry). Never writes.
 const { registerExpansionTools } = await import("../scripts/printer-expansion-tools.mjs");
 registerExpansionTools(server, z2, { manager: commandManager });
+// Full SDK endpoint surface (93 routes from the cloud_sdk_cpp.dll
+// registration table): offline catalog + typed single-endpoint caller with
+// confirm gates. The module is a zod-only leaf; see scripts/cloud-endpoints.mjs.
+const { registerCloudEndpointTools } = await import("../scripts/cloud-endpoints.mjs");
+registerCloudEndpointTools(server, z2, { manager: commandManager });
 // Edge tools (Batch 1 mutating gated + Batch 2 infra): force-stop/status-free
 // recovery, ACE feed-finish/refresh-slot, cloud rename + OTA check, event diff
 // (N14), NFC/spool decode (N13) and cloud camera info (N12). Batch 1 requires

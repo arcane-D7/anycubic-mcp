@@ -1,7 +1,7 @@
 # Anycubic Slicer Next Control — MCP plugin
 
 A local [MCP](https://modelcontextprotocol.io) server that drives **Anycubic Slicer Next**,
-Anycubic printers (LAN and cloud account) and a local CAD workspace on Windows. **115 tools**,
+Anycubic printers (LAN and cloud account) and a local CAD workspace on Windows. **119 tools**,
 exposed over stdio, with a read-only-by-default posture: every write path is gated by an
 explicit confirmation and a validated payload.
 
@@ -59,9 +59,9 @@ is the same manifest in the Codex plugin layout.
 
 ### CLI
 
-The same 115 tools are reachable without any MCP client: `npx anycubic <command>`
+The same 119 tools are reachable without any MCP client: `npx anycubic <command>`
 (after `pnpm link --global`, the plain `anycubic` command works everywhere).
-`anycubic tools`, `anycubic printers [--lan]`, `anycubic status <printer>`,
+`anycubic tools`, `anycubic endpoints [family]` (the 93-route cloud catalog), `anycubic printers [--lan]`, `anycubic status <printer>`,
 `anycubic account status`, and the generic `anycubic call <tool> '{...}'`.
 Human output by default, `--json` for scripts, `--quiet` for data only; exit codes
 0/1/2 (ok / tool error / usage). Token-shaped values are redacted in every mode.

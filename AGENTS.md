@@ -19,7 +19,7 @@ the slicer/editor lives in that repo.
   gitignored; the plugin refuses closed with a typed error when it is missing.
   `check-architecture` rule 5 fails the gate on any `PRIVATE KEY` block.
 - **Gate before commit.** `pnpm run check` = format:check, lint, unit tests,
-  build, smoke (must report 115 tools), licences, architecture, sanitize
+  build, smoke (must report 119 tools), licences, architecture, sanitize
   dry-run. Commit with Conventional Commits; the owner pushes.
 - **The bundle is frozen.** `vendor/server.mjs` is the versioned base; `build`
   copies it to `dist/` and appends the CAD wiring. Do not edit `dist/`.

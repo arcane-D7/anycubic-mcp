@@ -155,6 +155,7 @@ so no process is spawned and no network is touched:
 Live-only (needs a real account or LAN printer, so it is not in the unit suite):
 `printers` against the cloud, `status` against a printer, and `account status`
 against the operator's token store. These were exercised manually on
+2026-11-20: `tools` lists 119 tools (endpoint catalog + ACE tools added);
 2026-11-18: `tools` listed 115 tools, `printers` listed one account printer,
 `account status` read the stored token metadata, and
 `call account_token_status '{"include_token":true}'` printed `token: [redacted]`

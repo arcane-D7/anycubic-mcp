@@ -22,10 +22,13 @@ if (argsJson) {
   }
 }
 
+// Full env (see anycubic-cli.mjs): the SDK's stdio child gets a sanitized
+// default env otherwise, stripping ANYCUBIC_* tokens.
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [fileURLToPath(new URL("./mcp-entry.mjs", import.meta.url))],
   stderr: "pipe",
+  env: { ...process.env },
 });
 const client = new Client({ name: "mcp-call", version: "1.0.0" });
 try {
