@@ -7158,14 +7158,36 @@ const { registerCloudReadingsTool } = await import("../scripts/cloud-readonly-di
 registerCloudReadingsTool(server, z2);
 const { registerPrinterHttpReadings } = await import("../scripts/printer-http-readonly.mjs");
 registerPrinterHttpReadings(server, z2);
-// Exhaustive read surface + hidden command/connection map.
-const { registerFullPrinterReads } = await import("../scripts/printer-full-read.mjs");
-registerFullPrinterReads(server, z2);
 // Persistent cloud connection + full command bus (light/temp/fans/ACE/axis/print lifecycle).
 const { createManager } = await import("../scripts/printer-command-bus.mjs");
 const commandManager = createManager({ resourcesDir: path12.join(config.pluginRoot, "resources") });
+// Exhaustive read surface + hidden command/connection map. The wired
+// commandManager lets ace_raw_report reuse the persistent MQTT session
+// instead of opening a competing connection (shared deterministic identity).
+const { registerFullPrinterReads } = await import("../scripts/printer-full-read.mjs");
+registerFullPrinterReads(server, z2, { manager: commandManager });
 const { registerPrinterCommands } = await import("../scripts/printer-command-tools.mjs");
 registerPrinterCommands(server, z2, {
+  manager: commandManager,
+  resolvePrinter: async (cloud, printerId) => {
+    const printers = await cloud.listPrinters();
+    const printer =
+      printerId === void 0 ? printers[0] : printers.find((p) => Number(p.id) === printerId);
+    if (!printer)
+      throw new Error(
+        printerId === void 0
+          ? "No printer bound to this account"
+          : "Requested printer is not bound to this account",
+      );
+    return printer;
+  },
+});
+// Sku-capable ACE setInfo (custom-filament path, mapping-level evidence):
+// type + colour + optional <=20-char sku per slot, confirm:true gated.
+// Registered separately from printer_command_send because that schema cannot
+// carry the sku field.
+const { registerAceTools } = await import("../scripts/printer-command-bus.mjs");
+registerAceTools(server, z2, {
   manager: commandManager,
   resolvePrinter: async (cloud, printerId) => {
     const printers = await cloud.listPrinters();

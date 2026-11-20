@@ -53,14 +53,24 @@ const COMMAND_BUILDERS = Object.freeze({
   ace_auto_feed: (a) => ({
     multi_color_box: [{ id: a.box_id ?? 0, auto_feed: a.enabled ? 1 : 0 }],
   }),
-  ace_set_slot: (a) => ({
-    multi_color_box: [
-      {
-        id: a.box_id ?? 0,
-        slots: [{ index: a.slot_index, type: a.material_type, color: a.color }],
-      },
-    ],
-  }),
+  ace_set_slot: (a) => {
+    // Optional manual-filament identity. The NFC tag SKU field is 20 ASCII
+    // bytes (ace-nfc-filament-2026-11-18.md §3, pages 5-9); the setInfo slot
+    // carries the same identity, so anything longer is refused rather than
+    // silently truncated. A filled sku is the custom-filament path without a
+    // tag: the slot keeps edit_status=1 (manual) but gains a product identity.
+    let sku;
+    if (a.sku !== undefined && a.sku !== null && String(a.sku).length > 0) {
+      sku = String(a.sku);
+      if (sku.length > 20)
+        throw new Error(
+          `sku exceeds the 20-character protocol limit (${sku.length} chars) — refusing to send.`,
+        );
+    }
+    const slot = { index: a.slot_index, type: a.material_type, color: a.color };
+    if (sku) slot.sku = sku;
+    return { multi_color_box: [{ id: a.box_id ?? 0, slots: [slot] }] };
+  },
   ai_settings_set: (a) => ({
     ai_settings: {
       status: a.enabled ? 3 : 0,
@@ -646,4 +656,71 @@ export function createManager({ accessToken, resourcesDir, log, cloud } = {}) {
   const token = accessToken ?? process.env.ANYCUBIC_CLOUD_TOKEN ?? null;
   const anycubic = new AnycubicCloud({ access_token: token, resources_dir: resourcesDir, log });
   return new CloudConnectionManager({ cloud: anycubic, log });
+}
+
+// ---------------------------------------------------------------------------
+// MCP registration — the sku-capable ACE setInfo (custom/manual filament)
+// ---------------------------------------------------------------------------
+
+/**
+ * Register `ace_set_slot` as its own tool so the payload can carry the
+ * optional `sku` field (the printer_command_send schema predates it and
+ * cannot pass one). The manual-filament write, extended: type + colour set
+ * the slot as before; a filled `sku` (<= 20 chars — the NFC-tag SKU field
+ * width) gives the slot a product identity WITHOUT any tag, the documented
+ * custom-filament path (docs/research/ace-nfc-filament-2026-11-18.md §10b,
+ * mqtt-surface-sweep §4: sku is the only per-slot material identifier).
+ * Safety: `state` class — the confirm:true gate is enforced here before any
+ * network activity, exactly like every other bus command.
+ */
+export function registerAceTools(server, z, { manager, resolvePrinter } = {}) {
+  if (!manager || !resolvePrinter)
+    throw new Error("registerAceTools requires manager and resolvePrinter");
+  server.registerTool(
+    "ace_set_slot",
+    {
+      title: "Set an ACE slot's filament (type + colour + optional SKU)",
+      description:
+        "Writes one ACE slot over cloud MQTT (multiColorBox/setInfo): material type, [R,G,B] colour and an OPTIONAL sku (max 20 chars, the NFC-tag SKU field width). Without sku this is the plain manual filament (slot shows edit_status=1). With sku it is the custom-filament path: a product identity without any physical tag — the box cannot tell it apart from a catalogue SKU string, and a later tag read overwrites the slot. Evidence level: mapping (never live-validated on hardware). REQUIRES confirm:true. Nothing is sent without it.",
+      inputSchema: {
+        box_id: z.number().int().min(0).max(9).optional(),
+        slot_index: z.number().int().min(0).max(9),
+        material_type: z.string().min(1).max(20),
+        color: z.array(z.number().int().min(0).max(255)).length(3),
+        sku: z.string().max(20).optional(),
+        confirm: z.boolean().default(false),
+        reply_timeout_ms: z.number().int().min(500).max(30000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args) => {
+      try {
+        // Gate BEFORE any network activity: a missing confirmation must never
+        // reach the cloud or the broker.
+        assertConfirm("ace_set_slot", args);
+        const cloud = manager.cloud;
+        if (!cloud) throw new Error("No cloud session available.");
+        if (!cloud.xxToken) {
+          const token = process.env.ANYCUBIC_CLOUD_TOKEN ?? null;
+          if (token && !cloud.access_token) cloud.access_token = token;
+          await cloud.login();
+        }
+        const printer = await resolvePrinter(cloud, args.printer_id);
+        const result = await executeCloudCommand(manager, printer, "ace_set_slot", args, {
+          replyTimeoutMs: args.reply_timeout_ms ?? 8000,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: redact(error.message) }] };
+      }
+    },
+  );
 }

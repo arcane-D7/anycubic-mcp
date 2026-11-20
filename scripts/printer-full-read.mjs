@@ -23,6 +23,7 @@ import {
   CLOUD_HTTP_ENDPOINTS,
   CLOUD_TOPICS,
   DEFAULT_PORT_SCAN,
+  HTTP_PROPERTY_CATALOG,
   LAN_TOPICS,
   LEGACY_ORDER_IDS,
   LIFECYCLE_STATES,
@@ -797,13 +798,255 @@ export function propertyCatalog() {
 }
 
 // ---------------------------------------------------------------------------
+// ace_raw_report — the RAW ACE read (local filament inventory base)
+//
+// Reads multiColorBox + extfilbox COMPLETELY (every field the device reports,
+// nothing filtered out) plus the 33 catalogued fields of the HTTP `ace`
+// endpoint when it answers, and returns the integral reconciled payload
+// including every catalog-external field as `extra`. Reconciliation is shown
+// for context; the raw payloads are always the authoritative part of the
+// reply. Read-only by construction: it publishes only actions listed in
+// READ_ONLY_ACTIONS (getInfo / query / reportInfo).
+// ---------------------------------------------------------------------------
+
+const ACE_RAW_READS = Object.freeze([
+  { sourceId: "multiColorBox", action: "getInfo" },
+  { sourceId: "extfilbox", action: "query" },
+  { sourceId: "extfilbox", action: "reportInfo" },
+]);
+
+/** MQTT-side raw read: one publish, integral reply collection, no filtering. */
+async function aceRawMqttRead(manager, printer, sourceId, action, timeoutMs) {
+  const source = sourceById(sourceId);
+  if (!source) throw new Error(`Unknown ACE read source '${sourceId}'`);
+  if (!READ_ONLY_ACTIONS.includes(action))
+    throw new Error(`Refusing non-read action '${action}' for '${sourceId}'`);
+  const client = await manager.acquire(printer);
+  const topic = CLOUD_TOPICS.command
+    .replace("{model_id}", String(printer.machine_type))
+    .replace("{printer_key}", String(printer.key))
+    .replace("{type}", source.type);
+  const msgid = crypto.randomUUID();
+  await new Promise((resolve, reject) =>
+    client.publish(
+      topic,
+      JSON.stringify({ type: source.type, action, timestamp: Date.now(), msgid, data: null }),
+      (error) => (error ? reject(error) : resolve()),
+    ),
+  );
+  manager.stats.published += 1;
+  const reply = await manager.waitForReply(source.type, msgid, timeoutMs);
+  // Overlapping report subscriptions deliver duplicates (one per matching
+  // filter); suppress exact (topic, data) repeats within the reply set while
+  // keeping every distinct report integral.
+  const seen = new Set();
+  const reports = [];
+  let duplicates = 0;
+  for (const event of reply.reports) {
+    const key = `${event.topic}|${JSON.stringify(event.data?.data ?? null)}`;
+    if (seen.has(key)) {
+      duplicates += 1;
+      continue;
+    }
+    seen.add(key);
+    reports.push(event);
+  }
+  const merged = {};
+  for (const event of reports)
+    if (event.data?.data && typeof event.data.data === "object")
+      Object.assign(merged, event.data.data);
+  const deviceError = reports.find((event) => event.data?.code && event.data.code !== 200);
+  return {
+    source: sourceId,
+    action,
+    topic: redact(topic),
+    msgid,
+    state: reply.state,
+    match_mode:
+      reply.state === "correlated_reply"
+        ? "msgid"
+        : reply.state === "uncorrelated_report"
+          ? "type-only"
+          : "none",
+    report_count: reports.length,
+    duplicate_reports_suppressed: duplicates,
+    device_codes: reports.map((event) => event.data?.code).filter((code) => code !== undefined),
+    device_error: deviceError
+      ? redact(deviceError.data?.msg ?? `code ${deviceError.data?.code}`)
+      : null,
+    // INTEGRAL: every report, redacted for secrets but not field-filtered.
+    reports,
+    // Convenience merge for consumers that want one object; `reports` is the
+    // authoritative integral form (a merge would hide repeated-key variation).
+    data: Object.keys(merged).length ? merged : null,
+    reconciliation: matchProperties(merged, source.properties),
+  };
+}
+
+/**
+ * The raw ACE inventory read. Multi-source, fail-soft: a silent source (the
+ * idle-printer norm for extfilbox) never discards the others; a timeout is
+ * reported as a state, never as proof of absence (mqtt-surface-sweep §5).
+ */
+export async function collectAceRawReport({
+  manager,
+  cloud,
+  printer,
+  includeExtfilbox = true,
+  includeHttp = true,
+  timeoutMs = 8000,
+} = {}) {
+  if (!manager?.acquire || !manager?.waitForReply)
+    throw new Error("collectAceRawReport requires a CloudConnectionManager (or equivalent)");
+  const result = {
+    tool: "ace_raw_report",
+    read_only: true,
+    collected_at: new Date().toISOString(),
+    printer: {
+      machine_type: printer.machine_type,
+      printer_key_suffix: String(printer.key ?? "").slice(-6),
+      ...(printer.id !== undefined ? { printer_id: Number(printer.id) } : {}),
+    },
+    published_actions: ACE_RAW_READS.filter((r) => includeExtfilbox || r.sourceId !== "extfilbox")
+      .map((r) => `${r.sourceId}/${r.action}`)
+      .join(" / "),
+    sources: {},
+    http: null,
+    inventory: {
+      carriers: [],
+      mqtt: null,
+      http: null,
+      slots: null,
+      box: null,
+      extfilbox: null,
+      extra_fields: [],
+    },
+    note: "Full ACE read (multiColorBox + extfilbox integral MQTT payloads + the HTTP /v2/printer/getMultiColorBoxInfo 33-field envelope). A publish ack is a cloud receipt, not a device reply; idle printers answer nothing unsolicited — every read here is a poll. This is the base of the local custom-filament inventory: slot sku + edit_status are the only per-spool identity the box exposes.",
+  };
+  const reads = ACE_RAW_READS.filter((r) => includeExtfilbox || r.sourceId !== "extfilbox");
+  for (const read of reads) {
+    const key = read.sourceId === "extfilbox" ? "extfilbox" : read.sourceId;
+    try {
+      const readResult = await aceRawMqttRead(
+        manager,
+        printer,
+        read.sourceId,
+        read.action,
+        timeoutMs,
+      );
+      // First successful read per source wins as the canonical entry; further
+      // attempts (extfilbox reportInfo after query) only append when the
+      // canonical one found nothing.
+      const existing = result.sources[key];
+      if (!existing || (existing.report_count === 0 && readResult.report_count > 0)) {
+        result.sources[key] = readResult;
+      } else if (existing) {
+        existing.attempts = existing.attempts ?? [
+          { action: existing.action, state: existing.state },
+        ];
+        existing.attempts.push({ action: readResult.action, state: readResult.state });
+      }
+    } catch (error) {
+      result.sources[read.sourceId] = {
+        source: read.sourceId,
+        action: read.action,
+        state: "publish_error",
+        error: redact(error.message),
+      };
+    }
+  }
+  if (includeHttp) {
+    if (printer.id === undefined) {
+      result.http = {
+        endpoint: HTTP_PROPERTY_CATALOG.ace.path,
+        state: "skipped",
+        reason: "no printer id available for the cloud HTTP read",
+      };
+    } else {
+      try {
+        const response = await cloud.rawApi("GET", HTTP_PROPERTY_CATALOG.ace.path, {
+          query: { id: Number(printer.id) },
+        });
+        result.http = {
+          endpoint: HTTP_PROPERTY_CATALOG.ace.path,
+          state: "reply",
+          // INTEGRAL envelope (code/msg/data.*), redacted, nothing filtered.
+          response: redact(response),
+          reconciliation: matchHttpProperties("ace", response),
+        };
+      } catch (error) {
+        result.http = {
+          endpoint: HTTP_PROPERTY_CATALOG.ace.path,
+          state: "error",
+          error: redact(error.message),
+        };
+      }
+    }
+  }
+  // Reconciled inventory digest over whichever carriers answered. `extra`
+  // lists the catalog-external paths — the fields a future catalog update
+  // must document; the raw payloads above keep them regardless.
+  const mcb = result.sources.multiColorBox;
+  const httpData =
+    result.http?.state === "reply"
+      ? ((Array.isArray(result.http.response?.data)
+          ? result.http.response.data[0]
+          : result.http.response?.data) ?? null)
+      : null;
+  const carriers = [];
+  if (mcb?.data && typeof mcb.data === "object") carriers.push({ source: "mqtt", data: mcb.data });
+  if (httpData && typeof httpData === "object") carriers.push({ source: "http", data: httpData });
+  result.inventory = {
+    carriers: carriers.map((c) => c.source),
+    mqtt: mcb
+      ? {
+          state: mcb.state,
+          report_count: mcb.report_count,
+          catalog_count: mcb.reconciliation?.catalog_count ?? null,
+          observed_count: mcb.reconciliation?.observed_count ?? null,
+          extra_fields: mcb.reconciliation?.extra ?? [],
+        }
+      : null,
+    http: result.http
+      ? {
+          state: result.http.state,
+          catalog_count: result.http.reconciliation?.catalog_count ?? null,
+          observed_count: result.http.reconciliation?.observed_count ?? null,
+          extra_fields: result.http.reconciliation?.extra ?? [],
+        }
+      : null,
+    slots:
+      carriers.find((c) => Array.isArray(c.data.multi_color_box))?.data.multi_color_box?.[0]
+        ?.slots ?? null,
+    box: carriers.find((c) => Array.isArray(c.data.multi_color_box))?.data.multi_color_box?.[0]
+      ? (({ slots, ...box }) => box)(
+          carriers.find((c) => Array.isArray(c.data.multi_color_box)).data.multi_color_box[0],
+        )
+      : null,
+    extfilbox:
+      result.sources.extfilbox && result.sources.extfilbox.report_count > 0
+        ? result.sources.extfilbox.data
+        : null,
+    // Catalog-external paths across every carrier that answered — the fields a
+    // future catalog update must document; the raw payloads keep them anyway.
+    extra_fields: [
+      ...new Set([
+        ...(mcb?.reconciliation?.extra ?? []),
+        ...(result.http?.reconciliation?.extra ?? []),
+      ]),
+    ],
+  };
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // MCP registration
 // ---------------------------------------------------------------------------
 
 const SOURCE_IDS = READ_SOURCES.map((source) => source.id);
 const RECONCILE_IDS = [...SOURCE_IDS, ...HTTP_CATALOG_KIND_KEYS];
 
-export function registerFullPrinterReads(server, z) {
+export function registerFullPrinterReads(server, z, { manager: wiredManager } = {}) {
   server.registerTool(
     "printer_read_all",
     {
@@ -866,6 +1109,79 @@ export function registerFullPrinterReads(server, z) {
         return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
       } catch (error) {
         return { isError: true, content: [{ type: "text", text: redact(error.message) }] };
+      }
+    },
+  );
+
+  server.registerTool(
+    "ace_raw_report",
+    {
+      title: "Raw ACE filament inventory (multiColorBox + extfilbox + HTTP, unfiltered)",
+      description:
+        "READ-ONLY full ACE read: publishes getInfo to multiColorBox and query/reportInfo to extfilbox over the cloud MQTT bus, waits for the integral device reports (idempotent duplicate suppression only — nothing filtered), and optionally the HTTP /v2/printer/getMultiColorBoxInfo envelope (33 catalogued fields). Returns raw payloads + per-source reconciliation (matched/missing/extra) + a merged inventory digest (box, slots, sku/edit_status per slot, extfilbox). A publish ack is a cloud receipt, not a device reply; idle printers answer nothing unsolicited, so every read is a poll and a timeout is reported as a state, never as absence. Base of the local custom-filament inventory.",
+      inputSchema: {
+        printer_id: z.number().int().positive().optional(),
+        include_extfilbox: z.boolean().default(true),
+        include_http: z.boolean().default(true),
+        timeout_ms: z.number().int().min(1000).max(30000).optional(),
+        access_token: z.string().max(4096).optional(),
+        resources_dir: z.string().max(1024).optional(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async (args) => {
+      let ownedManager = null;
+      try {
+        // Cloud session: reuse the host-wired persistent bus manager when the
+        // caller provided one; otherwise build a throwaway cloud+manager pair
+        // for this call (released in finally).
+        let manager = wiredManager;
+        let cloud;
+        if (manager?.cloud) {
+          cloud = manager.cloud;
+          if (!cloud.xxToken) {
+            const token =
+              args.access_token ??
+              process.env.ANYCUBIC_CLOUD_TOKEN ??
+              findSlicerJwt(
+                process.env.APPDATA ? `${process.env.APPDATA}/AnycubicSlicerNext/log` : "",
+              );
+            if (token && !cloud.access_token) cloud.access_token = token;
+            await cloud.login();
+          }
+        } else {
+          cloud = cloudClient({
+            accessToken: args.access_token,
+            resourcesDir: args.resources_dir,
+          });
+          await cloud.login();
+          const { createManager } = await import("./printer-command-bus.mjs");
+          manager = ownedManager = createManager({ cloud });
+        }
+        const printers = await cloud.listPrinters();
+        const printer =
+          args.printer_id === undefined
+            ? printers[0]
+            : printers.find((p) => Number(p.id) === args.printer_id);
+        if (!printer)
+          throw new Error(
+            args.printer_id === undefined
+              ? "No printer bound to this account"
+              : "Requested printer is not bound to this account",
+          );
+        const data = await collectAceRawReport({
+          manager,
+          cloud,
+          printer,
+          includeExtfilbox: args.include_extfilbox ?? true,
+          includeHttp: args.include_http ?? true,
+          timeoutMs: args.timeout_ms ?? 8000,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: redact(error.message) }] };
+      } finally {
+        if (ownedManager) await ownedManager.release();
       }
     },
   );

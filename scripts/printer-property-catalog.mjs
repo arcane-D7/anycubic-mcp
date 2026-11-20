@@ -56,6 +56,112 @@ export const LAN_TOPICS = Object.freeze({
 });
 
 /**
+ * The slicer's own MQTT type registry, recovered from the 2.0.0.3 binaries
+ * (docs/research/slicer-binary-surface-2026-11-18.md §3.2). The registry holds
+ * 21 types; 7 were already known to this catalog, 14 are added here from the
+ * binary evidence only. Every entry is `mapping`-level: a name in a string
+ * table proves the vocabulary exists, never that this firmware emits the
+ * report — field-level truth requires a live capture.
+ */
+export const MQTT_TYPE_REGISTRY = Object.freeze([
+  { type: "print", catalog_status: "known", lane: "fdm" },
+  { type: "tempature", catalog_status: "known", lane: "fdm" },
+  { type: "light", catalog_status: "known", lane: "fdm" },
+  { type: "multiColorBox", catalog_status: "known", lane: "ace" },
+  { type: "extfilbox", catalog_status: "known", lane: "ace" },
+  { type: "video", catalog_status: "known", lane: "fdm" },
+  { type: "peripherie", catalog_status: "known", lane: "fdm" },
+  {
+    type: "filament",
+    catalog_status: "new",
+    lane: "fdm",
+    note: "dedicated filament report never subscribed to before (registry line 'filament/report'); the top investigation target for per-spool identity",
+  },
+  { type: "status", catalog_status: "new", lane: "fdm", note: "FDM status channel (push-only)" },
+  { type: "preheating", catalog_status: "new", lane: "fdm", note: "preheat state machine" },
+  { type: "levelling", catalog_status: "new", lane: "fdm", note: "auto bed levelling" },
+  { type: "screenSaver", catalog_status: "new", lane: "fdm", note: "panel control" },
+  {
+    type: "network",
+    catalog_status: "new",
+    lane: "fdm",
+    note: "WiFi diagnostics; 'getSignalStrength' lives here",
+  },
+  { type: "autoOperation", catalog_status: "new", lane: "fdm", note: "auto-op state machine" },
+  { type: "lastWill", catalog_status: "new", lane: "resin", note: "resin (SLA) line" },
+  { type: "exposure", catalog_status: "new", lane: "resin", note: "resin (SLA) line" },
+  { type: "residual", catalog_status: "new", lane: "resin", note: "resin (SLA) line" },
+  {
+    type: "airpure",
+    catalog_status: "new",
+    lane: "shared",
+    note: "air filter; sold for FDM too (pairs with the FilterElement report struct)",
+  },
+  { type: "releaseFilm", catalog_status: "new", lane: "resin", note: "resin (SLA) line" },
+  { type: "smartResinVat", catalog_status: "new", lane: "resin", note: "resin (SLA) line" },
+  { type: "resin", catalog_status: "new", lane: "resin", note: "resin (SLA) line" },
+]);
+
+/** Citation carried by every mapping-level registry entry. */
+export const MQTT_TYPE_REGISTRY_CITATION = Object.freeze(
+  "cloud_mqtt.dll 3194984-3195304, mirrored in mach_mqtt.dll 880712-881032 (source cloud_sdk_src/cloud_mqtt/cloud_mqtt_constant.cpp; docs/research/slicer-binary-surface-2026-11-18.md §3.2)",
+);
+
+/**
+ * Report struct names recovered from MSVC RTTI, namespace
+ * `mach_mqtt::FDM::Report` (slicer-binary-surface §3.4). Names only — the
+ * field-level shapes are the reflection table at mach_mqtt.dll 882960-884456,
+ * of which only the ACE-relevant subset has been transcribed (§4.2).
+ */
+export const MQTT_REPORT_STRUCTS = Object.freeze([
+  "AutoOpStatus",
+  "AxisMove",
+  "ExtFilBox",
+  "FilamentType",
+  "FileDelete",
+  "FileDetail",
+  "FileList",
+  "FileRename",
+  "File",
+  "FilterElement",
+  "Info",
+  "Light",
+  "MCBDryStatus",
+  "MultiBoxInfo",
+  "NetworkQuery",
+  "OTAUpgrade",
+  "OTAVersion",
+  "Peripherie",
+  "PrintCommon",
+  "PrintDownloading",
+  "PrintIgnore",
+  "PrintMonitoring",
+  "PrintPreheating",
+  "PrintPrinting",
+  "PrintRetect",
+  "PrintUpdate",
+  "Resin",
+  "SmartBox",
+  "Tempature",
+  "VideoDelete",
+  "VideoList",
+]);
+
+/**
+ * Types our tools publish that the SDK registry does NOT contain (§3.2). They
+ * are firmware-side aliases or community names the firmware tolerates; the
+ * live sweep (mqtt-surface-sweep §8) noted the inversion: exactly these
+ * answered reads, exactly the registry types stayed silent.
+ */
+export const MQTT_FIRMWARE_ALIAS_TYPES = Object.freeze([
+  "fan",
+  "axis",
+  "aiSettings",
+  "file",
+  "info",
+]);
+
+/**
  * Read sources. Every entry that has `action` is publishable to `path_template`
  * with the JSON envelope `{type, action, timestamp, msgid, data}`.
  */
@@ -306,7 +412,7 @@ export const READ_SOURCES = Object.freeze([
         path: "multi_color_box[].slots[].sku",
         type: "string",
         group: "ace",
-        note: "Anycubic spool SKU",
+        note: "Anycubic spool SKU; empty on manual slots unless written via setInfo with sku (custom-filament path). The only per-slot material identifier the box reports (no tag UID).",
       },
       { path: "multi_color_box[].slots[].color", type: "array", group: "ace", note: "[R,G,B]" },
       {
@@ -435,10 +541,293 @@ export const READ_SOURCES = Object.freeze([
     lan_publish: null,
     observed_actions: ["report"],
     evidence: "live",
-    note: "push-only work report; no query projection observed.",
+    note:
+      "push-only work report; no query projection observed. The binary registry confirms 'status' as a protocol type (mapping: " +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "); the sweep additionally probed status/queryInfo — broker ack, no device report (mqtt-surface-sweep §8).",
     properties: [
       { path: "state", type: "string", group: "state", note: "free | busy" },
       { path: "workReport", type: "object", group: "print" },
+    ],
+  },
+  // ---------------------------------------------------------------------------
+  // Binary-registry types (mapping level) — added from the Slicer Next 2.0.0.3
+  // string tables (slicer-binary-surface §3.2/§3.4). Each source declares ONE
+  // placeholder property named after its RTTI report struct (or a bare
+  // "report" container where no FDM struct exists): a declared entry that
+  // shows up as `missing` until a live capture documents the real shape, so
+  // every genuinely new field still surfaces as `extra`. None of these use a
+  // READ_ONLY_ACTIONS action, so no default read path publishes them.
+  // ---------------------------------------------------------------------------
+  {
+    id: "filament",
+    transport: "mqtt",
+    type: "filament",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/filament",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/filament",
+    observed_actions: ["queryInfo", "report"],
+    evidence: "mapping",
+    note:
+      "dedicated filament report we have never subscribed to; the top live-validation target for per-spool identity (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "). FilamentType RTTI struct (§3.4). The sweep probed filament/queryInfo — broker ack, no device report (mqtt-surface-sweep §8).",
+    properties: [
+      {
+        path: "filament_type",
+        type: "object",
+        group: "filament",
+        note: "placeholder named after the FilamentType report struct; field shape unverified",
+      },
+    ],
+  },
+  {
+    id: "preheating",
+    transport: "mqtt",
+    type: "preheating",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/preheating",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/preheating",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note:
+      "preheat state machine (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "); PrintPreheating RTTI struct (§3.4). Probe acked, no device report (mqtt-surface-sweep §8).",
+    properties: [
+      {
+        path: "preheating",
+        type: "object",
+        group: "state",
+        note: "placeholder named after the PrintPreheating report struct; field shape unverified",
+      },
+    ],
+  },
+  {
+    id: "levelling",
+    transport: "mqtt",
+    type: "levelling",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/levelling",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/levelling",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note:
+      "auto bed levelling (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "). Probe acked, no device report (mqtt-surface-sweep §8).",
+    properties: [
+      {
+        path: "report",
+        type: "object",
+        group: "state",
+        note: "placeholder; no RTTI struct transcribed for this type yet",
+      },
+    ],
+  },
+  {
+    id: "screenSaver",
+    transport: "mqtt",
+    type: "screenSaver",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/screenSaver",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/screenSaver",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note:
+      "panel control (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "). Probe acked, no device report (mqtt-surface-sweep §8).",
+    properties: [
+      {
+        path: "report",
+        type: "object",
+        group: "state",
+        note: "placeholder; no RTTI struct transcribed for this type yet",
+      },
+    ],
+  },
+  {
+    id: "network",
+    transport: "mqtt",
+    type: "network",
+    action: "getSignalStrength",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/network",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/network",
+    observed_actions: ["getSignalStrength"],
+    evidence: "mapping",
+    note:
+      "WiFi diagnostics; the registry pairs this type with the getSignalStrength action (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "); NetworkQuery RTTI struct (§3.4). Probe acked, no device report (mqtt-surface-sweep §8).",
+    properties: [
+      {
+        path: "network_query",
+        type: "object",
+        group: "network",
+        note: "placeholder named after the NetworkQuery report struct; field shape unverified",
+      },
+    ],
+  },
+  {
+    id: "autoOperation",
+    transport: "mqtt",
+    type: "autoOperation",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/autoOperation",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/autoOperation",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note:
+      "auto-op state machine (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "); AutoOpStatus RTTI struct (§3.4). Probe acked, no device report (mqtt-surface-sweep §8).",
+    properties: [
+      {
+        path: "auto_op_status",
+        type: "object",
+        group: "state",
+        note: "placeholder named after the AutoOpStatus report struct; field shape unverified",
+      },
+    ],
+  },
+  {
+    id: "airpure",
+    transport: "mqtt",
+    type: "airpure",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/airpure",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/airpure",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note:
+      "air filter; sold for FDM too — pairs with the FilterElement report struct (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      ", §3.4).",
+    properties: [
+      {
+        path: "filter_element",
+        type: "object",
+        group: "peripheral",
+        note: "placeholder named after the FilterElement report struct (filter life); field shape unverified",
+      },
+    ],
+  },
+  {
+    id: "resin",
+    transport: "mqtt",
+    type: "resin",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/resin",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/resin",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note:
+      "resin (SLA) line — not valid for the FDM Kobra S1; catalogued for surface completeness (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "); Resin RTTI struct (§3.4).",
+    properties: [
+      {
+        path: "resin",
+        type: "object",
+        group: "resin",
+        note: "placeholder named after the Resin report struct; field shape unverified",
+      },
+    ],
+  },
+  {
+    id: "exposure",
+    transport: "mqtt",
+    type: "exposure",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/exposure",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/exposure",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note: "resin (SLA) exposure control — not FDM (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+    properties: [
+      {
+        path: "report",
+        type: "object",
+        group: "resin",
+        note: "placeholder; no RTTI struct transcribed for this type yet",
+      },
+    ],
+  },
+  {
+    id: "lastWill",
+    transport: "mqtt",
+    type: "lastWill",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/lastWill",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/lastWill",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note: "MQTT last-will channel (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+    properties: [
+      {
+        path: "report",
+        type: "object",
+        group: "state",
+        note: "placeholder; no RTTI struct transcribed for this type yet",
+      },
+    ],
+  },
+  {
+    id: "residual",
+    transport: "mqtt",
+    type: "residual",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/residual",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/residual",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note: "resin residual-clean line — not FDM (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+    properties: [
+      {
+        path: "report",
+        type: "object",
+        group: "resin",
+        note: "placeholder; no RTTI struct transcribed for this type yet",
+      },
+    ],
+  },
+  {
+    id: "releaseFilm",
+    transport: "mqtt",
+    type: "releaseFilm",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/releaseFilm",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/releaseFilm",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note: "resin release-film line — not FDM (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+    properties: [
+      {
+        path: "report",
+        type: "object",
+        group: "resin",
+        note: "placeholder; no RTTI struct transcribed for this type yet",
+      },
+    ],
+  },
+  {
+    id: "smartResinVat",
+    transport: "mqtt",
+    type: "smartResinVat",
+    action: "queryInfo",
+    cloud_publish: "pc/printer/{model_id}/{printer_key}/smartResinVat",
+    lan_publish: "web/printer/{model_id}/{mqtt_device_id}/smartResinVat",
+    observed_actions: ["queryInfo"],
+    evidence: "mapping",
+    note: "smart resin vat peripheral — not FDM (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+    properties: [
+      {
+        path: "report",
+        type: "object",
+        group: "resin",
+        note: "placeholder; no RTTI struct transcribed for this type yet",
+      },
     ],
   },
 ]);
@@ -739,12 +1128,22 @@ export const COMMAND_MAP = Object.freeze([
     action: "setInfo",
     data: {
       multi_color_box: [
-        { id: "box id", slots: [{ index: "slot", type: "material", color: "[R,G,B]" }] },
+        {
+          id: "box id",
+          slots: [
+            {
+              index: "slot",
+              type: "material",
+              color: "[R,G,B]",
+              sku: "optional, <=20 chars — custom/manual filament SKU",
+            },
+          ],
+        },
       ],
     },
     safety: "state",
     evidence: "mapping",
-    note: "legitimate manual-filament path (mirrors edit_status=1)",
+    note: "legitimate manual-filament path (mirrors edit_status=1). sku is OPTIONAL: omitted = plain manual slot (type+colour); filled (max 20 chars, the NFC-tag SKU field width) = custom filament with a product identity without any tag. The live payload shows sku is the only per-slot material identifier (mqtt-surface-sweep §4).",
   },
   {
     type: "multiColorBox",
@@ -796,6 +1195,362 @@ export const COMMAND_MAP = Object.freeze([
   { type: "video", action: "stopCapture", data: null, safety: "state", evidence: "mapping" },
   { type: "extfilbox", action: "query", data: null, safety: "read", evidence: "reference" },
   { type: "info", action: "query", data: null, safety: "read", evidence: "live" },
+
+  // ---------------------------------------------------------------------------
+  // Binary action registry additions (38 new action names; slicer-binary-
+  // surface §3.3, immediately after the type tables). Evidence level is
+  // `mapping` for every entry: the names exist as strings in cloud_mqtt.dll /
+  // mach_mqtt.dll; the type/action PAIRING is inferred from the doc's intent
+  // groups and RTTI struct names (the registries are two separate string
+  // tables — the binary does not store pairs), and no payload shape has been
+  // observed. `data: null` everywhere: nothing here is executable until a
+  // live capture validates the envelope.
+  // ---------------------------------------------------------------------------
+  {
+    type: "filament",
+    action: "report",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note:
+      "registry line 'filament/report' — the dedicated per-spool filament report; top live-validation target (§8 priority 1). " +
+      MQTT_TYPE_REGISTRY_CITATION,
+  },
+  {
+    type: "filament",
+    action: "queryInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "registry query verb; sweep probed it on filament/preheating/levelling/screenSaver/autoOperation/status types — broker ack, no device report in every case (mqtt-surface-sweep §8).",
+  },
+  {
+    type: "status",
+    action: "reportStatus",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "FDM status channel report verb (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+  },
+  {
+    type: "preheating",
+    action: "queryInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "preheat state machine query (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+  },
+  {
+    type: "levelling",
+    action: "queryInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "auto bed levelling query (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+  },
+  {
+    type: "screenSaver",
+    action: "queryInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "panel control query (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+  },
+  {
+    type: "network",
+    action: "getSignalStrength",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note:
+      "the registry pairs the network type with getSignalStrength (doc §3.2 'getSignalStrength lives here'); NetworkQuery struct. Probe acked, no report. " +
+      MQTT_TYPE_REGISTRY_CITATION,
+  },
+  {
+    type: "autoOperation",
+    action: "queryInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "auto-op state machine query; AutoOpStatus struct (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+  },
+  {
+    type: "multiColorBox",
+    action: "reportAutoFeedInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note:
+      "ACE auto-feed state report verb (" +
+      MQTT_TYPE_REGISTRY_CITATION +
+      "); pairs with the auto_feed field of the live multiColorBox payload.",
+  },
+  {
+    type: "extfilbox",
+    action: "reportInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "external filament holder report verb; sweep probed extfilbox/reportInfo twice — acked, device silent on an idle printer (mqtt-surface-sweep §5).",
+  },
+  {
+    type: "info",
+    action: "reportVersion",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note:
+      "OTA lane (doc §3.3); OTAUpgrade/OTAVersion structs exist in the FDM report namespace — type pairing inferred, the registry stores no pairs. " +
+      MQTT_TYPE_REGISTRY_CITATION,
+  },
+  {
+    type: "info",
+    action: "downloading",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "OTA download-progress report verb (doc §3.3 OTA group); type pairing inferred.",
+  },
+  {
+    type: "info",
+    action: "updating",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "OTA update-progress report verb (doc §3.3 OTA group); type pairing inferred.",
+  },
+  {
+    type: "info",
+    action: "canceled",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "OTA cancellation report verb (doc §3.3 OTA group); type pairing inferred.",
+  },
+  {
+    type: "info",
+    action: "update-success",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "OTA success report verb, hyphenated in the registry (doc §3.3); type pairing inferred.",
+  },
+  {
+    type: "info",
+    action: "update-failed",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "OTA failure report verb, hyphenated in the registry (doc §3.3); type pairing inferred.",
+  },
+  {
+    type: "info",
+    action: "download-failed",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "OTA download-failure report verb, hyphenated in the registry (doc §3.3); type pairing inferred.",
+  },
+  {
+    type: "info",
+    action: "updateSuccessProcessed",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "OTA lane (doc §3.3); reads as a processing acknowledgement the client sends after an OTA outcome — direction/payload unvalidated, treat as write-shaped.",
+  },
+  {
+    type: "info",
+    action: "updateFailedProcessed",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "OTA lane (doc §3.3); processing acknowledgement for a failed update — direction/payload unvalidated, treat as write-shaped.",
+  },
+  {
+    type: "print",
+    action: "onlineReport",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "print-control lane report verb (doc §3.3); pairing inferred.",
+  },
+  {
+    type: "print",
+    action: "workReport",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "push-only work report verb (doc §3.3); the live status push carries workReport objects (catalog status source).",
+  },
+  {
+    type: "print",
+    action: "ignore",
+    data: null,
+    safety: "job",
+    evidence: "mapping",
+    note: "skip one object of the RUNNING job (doc §3.3 print control 'ignore (skip object)'); PrintIgnore struct (§3.4). Affects the part on the bed — job-class gate; payload unvalidated.",
+  },
+  {
+    type: "print",
+    action: "monitor",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "print monitoring query; PrintMonitoring struct (" + MQTT_TYPE_REGISTRY_CITATION + ").",
+  },
+  {
+    type: "print",
+    action: "reDetect",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "re-run on-device AI failure detection (doc §3.3); PrintRetect struct [sic] (§3.4). Triggers computation, no motion; state-class.",
+  },
+  {
+    type: "video",
+    action: "listVideo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "file lane (doc §3.3): recorded videos listing; VideoList struct (§3.4).",
+  },
+  {
+    type: "video",
+    action: "deleteVideo",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "file lane (doc §3.3): destructive video delete; VideoDelete struct (§3.4). Not validated.",
+  },
+  {
+    type: "video",
+    action: "videoThumbnailList",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "sweep probed video/videoThumbnailList — broker ack, no device report (mqtt-surface-sweep §8).",
+  },
+  {
+    type: "file",
+    action: "deleteBatch",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "destructive bulk delete; appears ONLY in cloud_mqtt.dll 3195888, not in mach_mqtt.dll — a cloud-only bulk delete (doc §3.3). Not validated.",
+  },
+  {
+    type: "file",
+    action: "fileDetails",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "file lane: per-file detail query; FileDetail struct (doc §3.3/§3.4).",
+  },
+  {
+    type: "file",
+    action: "renameFile",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "file lane: rename (write); FileRename struct (doc §3.3/§3.4). Not validated.",
+  },
+  {
+    type: "file",
+    action: "cloudRecommendList",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "file lane: cloud-recommended model list (doc §3.3).",
+  },
+  {
+    type: "file",
+    action: "replace",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "file lane: replace (write, destructive-ish) (doc §3.3). Not validated.",
+  },
+  {
+    type: "multiColorBox",
+    action: "autoUpdateInfo",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "ACE/box lane (doc §3.3): box info auto-update report verb.",
+  },
+  {
+    type: "multiColorBox",
+    action: "autoUpdateDryStatus",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "ACE/box lane (doc §3.3): drying-state report verb; MCBDryStatus RTTI struct — drying as a separate struct, not a field of MultiBoxInfo (§3.4).",
+  },
+  {
+    type: "multiColorBox",
+    action: "finishFeedFilament",
+    data: null,
+    safety: "motion",
+    evidence: "mapping",
+    note: "ACE/box lane (doc §3.3): the SECOND phase of a two-phase feed ('feed has a two-phase completion we do not model; a half-fed ACE is a jam'). Requires hardware validation; treat as feed motion.",
+  },
+  {
+    type: "multiColorBox",
+    action: "refresh",
+    data: null,
+    safety: "read",
+    evidence: "mapping",
+    note: "ACE/box lane (doc §3.3): box state refresh verb; pairing inferred.",
+  },
+  {
+    type: "resin",
+    action: "feedResin",
+    data: null,
+    safety: "motion",
+    evidence: "mapping",
+    note: "resin (SLA) line (doc §3.3): physical resin feed; not valid for the FDM Kobra S1.",
+  },
+  {
+    type: "resin",
+    action: "cyclicCleaning",
+    data: null,
+    safety: "motion",
+    evidence: "mapping",
+    note: "resin (SLA) line (doc §3.3): cyclic vat cleaning; physical motion.",
+  },
+  {
+    type: "resin",
+    action: "clean",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "resin (SLA) line (doc §3.3): clean verb; semantics unvalidated.",
+  },
+  {
+    type: "resin",
+    action: "cancel",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "resin (SLA) line (doc §3.3): cancel verb; semantics unvalidated.",
+  },
+  {
+    type: "resin",
+    action: "reset",
+    data: null,
+    safety: "state",
+    evidence: "mapping",
+    note: "resin (SLA) line (doc §3.3): reset verb; semantics unvalidated.",
+  },
+  {
+    type: "axis",
+    action: "moveToCoordinates",
+    data: null,
+    safety: "motion",
+    evidence: "mapping",
+    note: "the registry variant of our axis/move (doc §3.3: 'move → moveToCoordinates'). Payload shape NOT evidenced — the legacy order-id move used axis/move_type/distance; publishing this name requires live validation first.",
+  },
 ]);
 
 /**
@@ -1027,6 +1782,23 @@ export function catalogStats() {
     http_by_evidence: httpEvidence,
     grand_total_properties: total + httpTotal,
     commands: COMMAND_MAP.length,
+    mqtt_type_registry: {
+      registry_types: MQTT_TYPE_REGISTRY.length,
+      known_before_binary: MQTT_TYPE_REGISTRY.filter((t) => t.catalog_status === "known").length,
+      new_in_binary: MQTT_TYPE_REGISTRY.filter((t) => t.catalog_status === "new").length,
+      firmware_alias_types_not_in_registry: MQTT_FIRMWARE_ALIAS_TYPES.length,
+      report_structs: MQTT_REPORT_STRUCTS.length,
+      citation: MQTT_TYPE_REGISTRY_CITATION,
+    },
+    mqtt_action_registry: {
+      registry_total: 56,
+      distinct_new_action_names: 38,
+      // One entry per (type, action) pair; the queryInfo verb is catalogued
+      // once per type it was probed against, so the pair count exceeds 38.
+      command_pairs_added_from_binary: 42,
+      citation:
+        "docs/research/slicer-binary-surface-2026-11-18.md §3.3 — every added entry is evidence: mapping, data: null",
+    },
     cloud_http_endpoints: CLOUD_HTTP_ENDPOINTS.length,
     printer_http_endpoints: PRINTER_HTTP_ENDPOINTS.length,
   };

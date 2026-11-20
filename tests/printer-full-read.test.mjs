@@ -450,13 +450,14 @@ test("every queryable source only ever publishes its read action", async () => {
 
 // --- MCP registration -------------------------------------------------------
 
-test("the full-read module registers its four tools with read-only annotations", () => {
+test("the full-read module registers its read tools with read-only annotations", () => {
   const registered = new Map();
   const server = {
     registerTool: (name, config, handler) => registered.set(name, { config, handler }),
   };
   registerFullPrinterReads(server, z);
   assert.deepEqual([...registered.keys()].sort(), [
+    "ace_raw_report",
     "printer_hidden_command_map",
     "printer_property_catalog",
     "printer_property_reconcile",
