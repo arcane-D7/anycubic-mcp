@@ -58,3 +58,20 @@ both captured. A third probe with the fixed sweep would yield the full curve.
 The sweep's DPAPI decrypt child (PowerShell) printed `stdin is not a tty` and killed
 the script in background/pipe contexts: needs `-NonInteractive` AND
 `stdio: ["ignore", "pipe", "pipe"]`. Both applied to the poc-output sweep script.
+
+## Post-mortem: probe 2 spaghetti (owner-reported, 2026-11-20)
+
+Task 144090770 ended `print_status: 3, reason: "User initiated"` (the printer's AI
+spaghetti detection stopped the job; the owner cleaned the plate and cancelled).
+Root cause, found in the v1 gcode: **slicing without `--load-filaments` emits NO
+nozzle-temperature command at all** — the v1 gcode carried only `M140 S45` (bed)
+plus the two end-of-print `S0` lines. The printer ran the job at its standby
+target (140 C, observed live in the cooldown telemetry): PLA at 140 C is
+underextrusion, which prints a marginal cube on a forgiving spool (probe 1, by
+luck) and spaghetti on the next (probe 2).
+
+Fix, verified in the re-sliced `probe-cube-v2.gcode.3mf` with
+`--load-filaments "Anycubic PLA @Anycubic Kobra S1 0.4 nozzle.json"`:
+`M104 S210` + `M140 S55`, 54 layers. **Rule: never send a job whose gcode does
+not carry an explicit nozzle heat command (assert M104/M109 S>=190 for PLA)
+before the first extrusion.**
