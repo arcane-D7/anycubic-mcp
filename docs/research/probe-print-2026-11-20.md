@@ -75,3 +75,25 @@ Fix, verified in the re-sliced `probe-cube-v2.gcode.3mf` with
 `M104 S210` + `M140 S55`, 54 layers. **Rule: never send a job whose gcode does
 not carry an explicit nozzle heat command (assert M104/M109 S>=190 for PLA)
 before the first extrusion.**
+
+## Post-mortem 2: cubes released from the bed on the last layer (owner-reported, 2026-11-21)
+
+Both probe gcodes (v1 AND v2) printed the cube to the last layer, then the top
+layer spaghetti'd and the cube released from the plate. Root cause is
+**material mismatch, not the gcode itself**: the job fed the ACE's physical
+slot 2, whose tag material is **PETG** (live multiColorBox: type PETG, color
+[141,118,109]), while both gcodes carried **PLA temperatures**
+(v2: nozzle 210 / bed 55). PETG wants ~230-250 nozzle and **70-80 bed**;
+at 55 the adhesion on textured PEI degrades as the part cools and contracts,
+a small cube pops free, and the final layer prints into air.
+
+Standing rules (recorded so future gcodes never fail this way):
+
+1. **Match the filament preset to the feeding slot's material BEFORE slicing.**
+   Read the slot's `type` from multiColorBox (the tag provides it — proven
+   live) and slice with that material's preset. PETG slot -> PETG preset.
+2. Bed temperature floors on the Kobra S1 (textured PEI): PLA 55-60,
+   **PETG 70-80**, TPU 50-60 (non-ACE), ABS/ASA 90-100 (enclosed, door plan).
+3. Follow-up ticket (not yet implemented): a material guard in
+   printer_print_start — read the feeding slot's type, compare with the
+   gcode's temperature class, refuse or warn on mismatch before any order.
