@@ -59,7 +59,7 @@ test("every endpoint is fully declared: method, safety, purpose, offset, param e
       `${e.id} offset must be null or a plausible cloud_sdk_cpp.dll offset`,
     );
     assert.ok(
-      ["repo-validated", "research-doc", "inferred"].includes(e.methodEvidence),
+      ["repo-validated", "research-doc", "inferred", "live"].includes(e.methodEvidence),
       `${e.id} needs method evidence`,
     );
     for (const p of e.params) {

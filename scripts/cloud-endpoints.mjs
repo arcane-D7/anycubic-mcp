@@ -51,6 +51,7 @@ export const PARAM_EVIDENCE = Object.freeze({
 export const METHOD_EVIDENCE = Object.freeze({
   REPO_VALIDATED: "repo-validated", // this repo's code sends exactly this method
   RESEARCH_DOC: "research-doc", // a research record documents the method
+  LIVE: "live", // live-validated (2026-11-21 write window: POST + printer_id)
   INFERRED: "inferred", // guessed from path semantics
 });
 
@@ -336,8 +337,8 @@ const V5 = [
   ),
   endpoint(
     "v5",
-    "GET",
-    METHOD_EVIDENCE.INFERRED,
+    "POST",
+    METHOD_EVIDENCE.LIVE,
     "/v5/printer/properties/query",
     "Query the cloud property mirror of the MQTT report tree.",
     SAFETY.READ,
@@ -350,8 +351,8 @@ const V5 = [
   ),
   endpoint(
     "v5",
-    "GET",
-    METHOD_EVIDENCE.INFERRED,
+    "POST",
+    METHOD_EVIDENCE.LIVE,
     "/v5/printer/file/thumbnail/list",
     "List thumbnails for a printer's files.",
     SAFETY.READ,
