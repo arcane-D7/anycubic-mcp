@@ -42,7 +42,7 @@ Summary: 93 routes — 38 CONFIRMED (23 repo-validated + 15 live 2026-11-21),
 | v5_project_info                             | GET    | /v5/project/info                             | read        | CONFIRMED 2026-11-21       | id = task id from project/list (144435802 answered)                                                                                                 |
 | v5_project_list                             | GET    | /v5/project/list                             | read        | CONFIRMED 2026-11-21       | code 1; 10 projects (project_id/project_name/printer_name/print_status/start_time)                                                                  |
 | v5_project_source                           | GET    | /v5/project/source                           | read        | CONFIRMED 2026-11-21       | same id contract as project/info                                                                                                                    |
-| v5_mqtt_status_report                       | POST   | /v5/mqtt/status/report                       | write       | MAPPED                     |                                                                                                                                                     |
+| v5_mqtt_status_report                       | POST   | /v5/mqtt/status/report                       | write       | CONFIRMED 2026-11-21       | POST {Type: status, Action: reportStatus, State: connected, printer_id} — escalation Type->Action->State; returns msg_id                            |
 | v5_alarm_message_batchSetRead               | POST   | /v5/alarm_message/batchSetRead               | write       | CONFIRMED 2026-11-21       | message_ids array                                                                                                                                   |
 | v5_cloud-file_folder_create                 | POST   | /v5/cloud-file/folder/create                 | write       | CONFIRMED 2026-11-21       | scratch id 21668; catalog has no folder-delete                                                                                                      |
 | v5_cloud-file_folder_delete                 | POST   | /v5/cloud-file/folder/delete                 | destructive | MAPPED                     |                                                                                                                                                     |
@@ -386,3 +386,29 @@ custom tags):
   window; validate HTTP endpoints BETWEEN windows.
 - The sweep's read-only guard refuses `filament/queryInfo` (not in
   READ_ONLY_ACTIONS) — testing it needs a dedicated probe or a catalog change.
+
+## Final state after the full campaign (2026-11-21, 8 validation rounds)
+
+59 of 93 CONFIRMED live. The remaining 34, by the exact reason each stays closed:
+
+- Data-blocked (2): farm_message_info / printerErrorList — the account has zero farm
+  messages, so no row id exists to chain.
+- Flow-blocked (1): getoauthToken — needs the one-time Casdoor code from the
+  browser leg (localhost:21328 callback); only an interactive login produces it.
+- Contract-blocked (6): getUploadStatus (file/gcode/lock ids all refused; the
+  upload-record id from newUploadFile is the untested hypothesis), getTcCosTempToken
+  and work_printer_info (generic request error), edit/deleteUserColorGroup (the
+  add is accepted but no readable surface returns the group id; get_all/group_type
+  reads confirmed code 1 without revealing it), work_project_report (its project
+  id space is not the v5 task space), v2_device_save (payload unknown, risky).
+- Policy-gated (25): hardware (sendFile, bulkTasks, cleanPlate), auth-session
+  (login/logout/register/passwordReset/code-send), feedback, binding — contracts
+  documented INFERRED in endpoint-params-web-2026-11-21.md §6; not probed by design.
+
+Cross-cutting lessons of the campaign: the validators reveal exactly one
+requirement per call (type->page->limit; platform->version_code;
+main_version->plugin_key->os_version; Type->Action->State) — the systematic
+method for any future route; storage names must carry a valid file extension
+(remote_name AND lock names); two base paths exist (/p/t/ and /p/p/workbench/api);
+the SDK format-string grammar at 6588040-6588240 covers {id}, {type,page,limit}
+and {ids[]}.
