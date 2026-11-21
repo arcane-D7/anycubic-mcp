@@ -398,3 +398,28 @@ route table it serves (§3).
 | `POST /farm/message/read`           | `{ "message_ids": [ 1, 2 ] }` (the read pool row key)                  |
 | `POST /v3/printer/sendFile`         | `{ "printer_id": 1234, "file_id": 5678, "task_settings": {} }`         |
 | `GET /user/cloud_storage/...` twins | follow the /v2 shapes (§6)                                             |
+
+## 8. The MITM verdict (2026-11-21): the SDK pins its TLS — addendum
+
+Method: mitmproxy on 127.0.0.1:8888, the app relaunched with HTTPS_PROXY (the
+cloud SDK honors proxy env vars — its connections DID arrive at the proxy),
+the mitmproxy CA installed in the user store AND the machine root store
+(owner-approved UAC). Result: every TLS handshake ends with
+`tlsv1 alert unknown ca` — the SDK carries its own CA validation
+(**certificate pinning**; consistent with a shared mTLS culture).
+Consequence: the app's HTTPS request bodies are cryptographically opaque to
+local interception; the missing contracts cannot be recovered by MITM.
+
+## 9. The OAuth flow, corrected (2026-11-21)
+
+The authorize attempt with `redirect_uri=http://localhost:21328/callback` was
+refused by Casdoor's allowlist. The SDK strings correct the picture:
+`acnext://login&scope=read&state=ac_slicer_next&lang=…` and
+`acnext://logout&state=…&id_token_hint=…` — the registered redirect is the
+**custom scheme `acnext://login`**, which the OS routes to the app itself.
+`http://localhost:21328/callback` is the **SimplyPrint integration** callback
+(sits next to `simplyprintanycubicslicer` and the `user.read files.te…`
+scope list in the binary). So the OAuth code exists only inside the app after
+a browser login; the exchange (`getoauthToken`) is the app's own step.
+Loopback (`/api/v1/account/login|logged|headers`, 49 routes) is the observer
+lane — it comes up with the app's embedded web UI.
