@@ -14,8 +14,9 @@ probes. Regenerate the HTTP table with the generator noted at the bottom.
 
 ## Cloud HTTP (workbench API, XX-Token)
 
-Summary: 93 routes — 23 repo-validated (CONFIRMED), 70 MAPPED;
-by safety: {'write': 35, 'read': 50, 'destructive': 8}; by family: {'farm': 13, 'v5': 17, 'v3': 10, 'v2': 20, 'work': 16, 'user': 12, 'portal': 5}.
+Summary: 93 routes — 38 CONFIRMED (23 repo-validated + 15 live 2026-11-21),
+12 REFUSED-PARAM, 2 not served (404), 3 UNKNOWN refusals, 38 MAPPED never called
+(30 write + 8 destructive); by safety: {'write': 35, 'read': 50, 'destructive': 8}; by family: {'farm': 13, 'v5': 17, 'v3': 10, 'v2': 20, 'work': 16, 'user': 12, 'portal': 5}.
 
 | id                                          | method | path                                         | safety      | status                     | live evidence                                                                                                                                       |
 | ------------------------------------------- | ------ | -------------------------------------------- | ----------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -39,36 +40,36 @@ by safety: {'write': 35, 'read': 50, 'destructive': 8}; by family: {'farm': 13, 
 | v5_printer_properties_query                 | GET    | /v5/printer/properties/query                 | read        | REFUSED 2026-11-21         | HTTP 404 (not served on this deployment)                                                                                                            |
 | v5_printer_file_thumbnail_list              | GET    | /v5/printer/file/thumbnail/list              | read        | MAPPED                     |                                                                                                                                                     |
 | v5_project_info                             | GET    | /v5/project/info                             | read        | MAPPED                     |                                                                                                                                                     |
-| v5_project_list                             | GET    | /v5/project/list                             | read        | MAPPED                     |                                                                                                                                                     |
+| v5_project_list                             | GET    | /v5/project/list                             | read        | CONFIRMED 2026-11-21       | code 1; 10 projects (project_id/project_name/printer_name/print_status/start_time)                                                                  |
 | v5_project_source                           | GET    | /v5/project/source                           | read        | MAPPED                     |                                                                                                                                                     |
 | v5_mqtt_status_report                       | POST   | /v5/mqtt/status/report                       | write       | MAPPED                     |                                                                                                                                                     |
 | v5_alarm_message_batchSetRead               | POST   | /v5/alarm_message/batchSetRead               | write       | MAPPED                     |                                                                                                                                                     |
 | v5_cloud-file_folder_create                 | POST   | /v5/cloud-file/folder/create                 | write       | MAPPED                     |                                                                                                                                                     |
 | v5_cloud-file_folder_delete                 | POST   | /v5/cloud-file/folder/delete                 | destructive | MAPPED                     |                                                                                                                                                     |
 | v5_cloud-file_folder_rename                 | POST   | /v5/cloud-file/folder/rename                 | write       | MAPPED                     |                                                                                                                                                     |
-| v5_cloud-file_folder_list                   | GET    | /v5/cloud-file/folder/list                   | read        | MAPPED                     |                                                                                                                                                     |
+| v5_cloud-file_folder_list                   | GET    | /v5/cloud-file/folder/list                   | read        | CONFIRMED 2026-11-21       | code 1; empty folder array                                                                                                                          |
 | v5_cloud-file_item_move                     | POST   | /v5/cloud-file/item/move                     | write       | MAPPED                     |                                                                                                                                                     |
 | v5_project_printHistory_detail              | GET    | /v5/project/printHistory/detail              | read        | CONFIRMED (repo-validated) |                                                                                                                                                     |
 | v3_material_getTypeNameAndSkuListByVerNum   | GET    | /v3/material/getTypeNameAndSkuListByVerNum   | read        | CONFIRMED 2026-11-21       | requires ver_num>=1 (param-validated, gRPC-gateway style); ver_num=1 returns the official SKU catalog (brand/sku/type, e.g. Anycubic HPL19-102=PLA) |
 | v3_printer_sendFile                         | POST   | /v3/printer/sendFile                         | write       | MAPPED                     |                                                                                                                                                     |
-| v3_engine_getLatestVersion                  | GET    | /v3/engine/getLatestVersion                  | read        | MAPPED                     |                                                                                                                                                     |
-| v3_user_getSlicerConfig                     | GET    | /v3/user/getSlicerConfig                     | read        | MAPPED                     |                                                                                                                                                     |
+| v3_engine_getLatestVersion                  | GET    | /v3/engine/getLatestVersion                  | read        | CONFIRMED 2026-11-21       | code 1; engine version object (version_code/data_url/update_desc_en)                                                                                |
+| v3_user_getSlicerConfig                     | GET    | /v3/user/getSlicerConfig                     | read        | CONFIRMED 2026-11-21       | code 1; {user_id, url, create_time, update_time}                                                                                                    |
 | v3_user_setSlicerConfig                     | POST   | /v3/user/setSlicerConfig                     | write       | MAPPED                     |                                                                                                                                                     |
 | v3_work_project_feedback                    | POST   | /v3/work_project/feedback                    | write       | MAPPED                     |                                                                                                                                                     |
 | v3_public_getoauthToken                     | POST   | /v3/public/getoauthToken                     | write       | MAPPED                     |                                                                                                                                                     |
 | v3_public_loginWithAccessToken              | POST   | /v3/public/loginWithAccessToken              | write       | CONFIRMED (repo-validated) |                                                                                                                                                     |
 | v3_printer_getVideoThumbnailList            | GET    | /v3/printer/getVideoThumbnailList            | read        | CONFIRMED (repo-validated) |                                                                                                                                                     |
 | v3_work_project_getErrorList                | GET    | /v3/work_project/getErrorList                | read        | CONFIRMED (repo-validated) |                                                                                                                                                     |
-| v2_printer_getExternalShelves               | GET    | /v2/printer/getExternalShelves               | read        | REFUSED-PARAM 2026-11-21   | exists; validates `id > 0` (gRPC-gateway); not retried with a printer id yet                                                                        |
-| v2_device_getPrintOption                    | GET    | /v2/device/getPrintOption                    | read        | MAPPED                     |                                                                                                                                                     |
+| v2_printer_getExternalShelves               | GET    | /v2/printer/getExternalShelves               | read        | CONFIRMED 2026-11-21       | exists, validates Id>0; retry with a printer id returned the shelf objects (brand_name/color/current_status/loaded/material_name/status_type)       |
+| v2_device_getPrintOption                    | GET    | /v2/device/getPrintOption                    | read        | CONFIRMED 2026-11-21       | code 1; 12 option rows (machine_type/name/option)                                                                                                   |
 | v2_device_save                              | POST   | /v2/device/save                              | write       | MAPPED                     |                                                                                                                                                     |
-| v2_message_getMessageCount                  | GET    | /v2/message/getMessageCount                  | read        | MAPPED                     |                                                                                                                                                     |
+| v2_message_getMessageCount                  | GET    | /v2/message/getMessageCount                  | read        | CONFIRMED 2026-11-21       | code 1; per-type count rows (count/newcount/type/title)                                                                                             |
 | v2_message_getMessages                      | GET    | /v2/message/getMessages                      | read        | MAPPED                     |                                                                                                                                                     |
-| v2_message_hasNewMessage                    | GET    | /v2/message/hasNewMessage                    | read        | MAPPED                     |                                                                                                                                                     |
+| v2_message_hasNewMessage                    | GET    | /v2/message/hasNewMessage                    | read        | CONFIRMED 2026-11-21       | code 1; {hasNewMessage} flag object                                                                                                                 |
 | v2_message_setRead                          | POST   | /v2/message/setRead                          | write       | MAPPED                     |                                                                                                                                                     |
 | v2_message_setReadById                      | POST   | /v2/message/setReadById                      | write       | MAPPED                     |                                                                                                                                                     |
 | v2_message_delete                           | POST   | /v2/message/delete                           | destructive | MAPPED                     |                                                                                                                                                     |
-| v2_cloud_storage_getPreSignUrlArrWithName   | POST   | /v2/cloud_storage/getPreSignUrlArrWithName   | read        | MAPPED                     |                                                                                                                                                     |
+| v2_cloud_storage_getPreSignUrlArrWithName   | POST   | /v2/cloud_storage/getPreSignUrlArrWithName   | read        | CONFIRMED 2026-11-21       | code 1 after names[]; per-file preSignUrl+url pair (URLs are credentials)                                                                           |
 | v2_network_plugin_info                      | GET    | /v2/network_plugin/info                      | read        | MAPPED                     |                                                                                                                                                     |
 | v2_cloud_storage_lockStorageSpace           | POST   | /v2/cloud_storage/lockStorageSpace           | write       | CONFIRMED (repo-validated) |                                                                                                                                                     |
 | v2_cloud_storage_unlockStorageSpace         | POST   | /v2/cloud_storage/unlockStorageSpace         | write       | CONFIRMED (repo-validated) |                                                                                                                                                     |
@@ -100,18 +101,246 @@ by safety: {'write': 35, 'read': 50, 'destructive': 8}; by family: {'farm': 13, 
 | user_public_register                        | POST   | /user/public/register                        | write       | MAPPED                     |                                                                                                                                                     |
 | user_public_check_nickname                  | GET    | /user/public/check_nickname                  | read        | MAPPED                     |                                                                                                                                                     |
 | user_public_passwordReset                   | POST   | /user/public/passwordReset                   | write       | MAPPED                     |                                                                                                                                                     |
-| user_public_getIpAddress                    | GET    | /user/public/getIpAddress                    | read        | MAPPED                     |                                                                                                                                                     |
+| user_public_getIpAddress                    | GET    | /user/public/getIpAddress                    | read        | CONFIRMED 2026-11-21       | code 1; {country, province, city}                                                                                                                   |
 | user_verification_code_newSend              | POST   | /user/verification_code/newSend              | write       | MAPPED                     |                                                                                                                                                     |
 | user_profile_newUploadFile                  | POST   | /user/profile/newUploadFile                  | write       | MAPPED                     |                                                                                                                                                     |
 | user_profile_userInfo                       | GET    | /user/profile/userInfo                       | read        | CONFIRMED (repo-validated) |                                                                                                                                                     |
 | user_cloud_storage_getTcCosTempToken        | POST   | /user/cloud_storage/getTcCosTempToken        | read        | MAPPED                     |                                                                                                                                                     |
 | user_cloud_storage_lockStorageSpace         | POST   | /user/cloud_storage/lockStorageSpace         | write       | MAPPED                     |                                                                                                                                                     |
 | user_cloud_storage_unlockStorageSpace       | POST   | /user/cloud_storage/unlockStorageSpace       | write       | MAPPED                     |                                                                                                                                                     |
-| portal_index_country                        | GET    | /portal/index/country                        | read        | MAPPED                     |                                                                                                                                                     |
-| portal_index_country_hot                    | GET    | /portal/index/country_hot                    | read        | MAPPED                     |                                                                                                                                                     |
+| portal_index_country                        | GET    | /portal/index/country                        | read        | CONFIRMED 2026-11-21       | code 1; 248 countries                                                                                                                               |
+| portal_index_country_hot                    | GET    | /portal/index/country_hot                    | read        | CONFIRMED 2026-11-21       | code 1; 6 hot countries                                                                                                                             |
 | portal_index_feedback                       | POST   | /portal/index/feedback                       | write       | MAPPED                     |                                                                                                                                                     |
-| portal_index_reason                         | GET    | /portal/index/reason                         | read        | MAPPED                     |                                                                                                                                                     |
+| portal_index_reason                         | GET    | /portal/index/reason                         | read        | CONFIRMED 2026-11-21       | code 1; 412 feedback reasons                                                                                                                        |
 | portal_index_get_version                    | GET    | /portal/index/get_version                    | read        | MAPPED                     |                                                                                                                                                     |
+
+## Per-endpoint documentation
+
+Per-family reference for all 93 registered routes: one-line function, known
+params, validation status. Status labels: **[LIVE 2026-11-21]** — called live
+through `account_endpoint_call`, code 1 answer recorded; **[REFUSED-PARAM]** —
+called live, refused with a validation message naming a field (route exists,
+still no successful answer); **[404]** — registered in the SDK, not served on
+this deployment (plain HTTP 404, no envelope); **[INFERRED-write]** — write or
+destructive route, function inferred from path semantics and binary structs,
+never called (policy, see below); **[UNKNOWN]** — called live, bare
+`request error` refusal naming no field; **CONFIRMED (repo)** — exercised by
+this repo's connector (rows already in the main table).
+
+Counts: CONFIRMED 38 (23 repo + 15 live 2026-11-21) · REFUSED-PARAM 12 ·
+404 2 · UNKNOWN 3 · MAPPED-write 30 · MAPPED-destructive 8 → 93 total
+(MAPPED-write/-destructive rows carry the [INFERRED-write] label below). Live
+evidence: `poc-output/endpoint-batch-results.jsonl` +
+`endpoint-batch-results2.jsonl` — 43 calls over 32 routes, 2026-11-21.
+Binary-struct params cite docs/research/slicer-binary-surface-2026-11-18.md;
+[INFERRED] there = shape read from struct field names, never a live exchange
+(doc §7).
+
+**Write/destructive policy — why never validated.** The tool gate refuses
+write/destructive calls without `confirm:true` + `confirm_word:"EXECUTE"`, and
+repo policy forbids exercising them against the live account outside an
+owner-approved window (deletion-class list: research doc §7). What would
+unlock a row: an approved write-probe window against throwaway data (scratch
+colour group / scratch cloud folder / scratch message) converts it to [LIVE];
+hardware-affecting rows (bulk tasks, sendFile, setCleanPlate) additionally
+need a printer present and are not probed remotely.
+
+### v2
+
+| id                                        | function                                                 | params                                 | status            | notes                                                                                                                                    |
+| ----------------------------------------- | -------------------------------------------------------- | -------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| v2_printer_getExternalShelves             | List the external spool shelves (non-ACE material path). | `id` (printer id)                      | [LIVE 2026-11-21] | bare call refused `Id > 0`; retry with a printer id OK: shelf objects (brand_name/color/current_status/loaded/material_name/status_type) |
+| v2_device_getPrintOption                  | Print options per machine type.                          | —                                      | [LIVE 2026-11-21] | 12 rows (machine_type/name/option); no params needed                                                                                     |
+| v2_device_save                            | Save device settings.                                    | [INFERRED]                             | [INFERRED-write]  | never called (write policy)                                                                                                              |
+| v2_message_getMessageCount                | Unread message counts per type.                          | —                                      | [LIVE 2026-11-21] | rows carry count/newcount/type/title/content                                                                                             |
+| v2_message_getMessages                    | List account messages.                                   | `type` + `page`                        | [REFUSED-PARAM]   | bare: `type require`; with type=1: `page require`; message body still unfetched                                                          |
+| v2_message_hasNewMessage                  | Whether new messages exist.                              | —                                      | [LIVE 2026-11-21] | {hasNewMessage} flag object                                                                                                              |
+| v2_message_setRead                        | Mark messages read.                                      | [INFERRED]                             | [INFERRED-write]  | never called                                                                                                                             |
+| v2_message_setReadById                    | Mark one message read by id.                             | id [INFERRED]                          | [INFERRED-write]  | never called                                                                                                                             |
+| v2_message_delete                         | Delete a message.                                        | [INFERRED]                             | [INFERRED-write]  | destructive; never called                                                                                                                |
+| v2_cloud_storage_getPreSignUrlArrWithName | Pre-signed upload URLs for named files.                  | `names` (string array)                 | [LIVE 2026-11-21] | bare: `names require`; with names[] OK: per-file preSignUrl+url pair (URLs are credentials)                                              |
+| v2_network_plugin_info                    | Network plugin info for a device.                        | `main_version`                         | [REFUSED-PARAM]   | bare: `main_version require`; retry with the 2.0.0.3 string still refused — expected value shape unknown                                 |
+| v2_cloud_storage_lockStorageSpace         | Lock account storage before an upload.                   | —                                      | CONFIRMED (repo)  | upload flow step 1                                                                                                                       |
+| v2_cloud_storage_unlockStorageSpace       | Release the storage lock.                                | —                                      | CONFIRMED (repo)  | upload flow final step                                                                                                                   |
+| v2_profile_newUploadFile                  | Claim a completed upload into the file shelf.            | —                                      | CONFIRMED (repo)  | upload flow claim step; /user twin registered in the SDK                                                                                 |
+| v2_printer_printersStatus                 | List the account's printers and status.                  | —                                      | CONFIRMED (repo)  | primary discovery path on Slicer 2.0.0.3                                                                                                 |
+| v2_printer_info                           | One printer's full detail.                               | `id`                                   | CONFIRMED (repo)  | richest single read (128-field generated catalog)                                                                                        |
+| v2_printer_tool                           | One printer's tool (nozzle) data.                        | `id` + `model_id` + `type_function_id` | CONFIRMED (repo)  | type_function_id must be positive (13 = XYZ tool)                                                                                        |
+| v2_project_info                           | One project's detail.                                    | `id`                                   | CONFIRMED (repo)  | 126-field generated catalog                                                                                                              |
+| v2_project_printHistory                   | Paginated print history.                                 | `page` + `limit` + `print_status`      | CONFIRMED (repo)  | pagination shape repo-proven                                                                                                             |
+| v2_printer_getMultiColorBoxInfo           | One printer's ACE multi-colour box state.                | `id`                                   | CONFIRMED (repo)  | the plain multiColorBoxInfo spelling returned 404                                                                                        |
+
+### v3
+
+| id                                        | function                                                             | params                         | status            | notes                                                                                                                                                                                                                            |
+| ----------------------------------------- | -------------------------------------------------------------------- | ------------------------------ | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v3_material_getTypeNameAndSkuListByVerNum | The filament catalogue: type names + SKU lists by catalogue version. | `ver_num` (>=1)                | [LIVE 2026-11-21] | bare call refused `invalid GetTypeNameAndSkuListByVerNumReq.VerNum` (value must be greater than 0); ver_num=1 returns the official SKU catalog (brand/sku/type, e.g. Anycubic HPL19-102 = PLA); ver_num=2 returns an empty array |
+| v3_printer_sendFile                       | [INFERRED] send a cloud file to a printer.                           | file/printer id [INFERRED]     | [INFERRED-write]  | hardware-affecting; never called                                                                                                                                                                                                 |
+| v3_engine_getLatestVersion                | Latest slicer engine version (update check).                         | —                              | [LIVE 2026-11-21] | object: create_time/data_url/del_flag/draft/id/param_version/system_id/update_desc_cn/update_desc_en/update_time/version_code                                                                                                    |
+| v3_user_getSlicerConfig                   | Cloud-synced slicer settings.                                        | —                              | [LIVE 2026-11-21] | {user_id, url, create_time, update_time}                                                                                                                                                                                         |
+| v3_user_setSlicerConfig                   | Write cloud-synced slicer settings.                                  | [INFERRED]                     | [INFERRED-write]  | never called                                                                                                                                                                                                                     |
+| v3_work_project_feedback                  | Submit workbench project feedback.                                   | [INFERRED]                     | [INFERRED-write]  | never called                                                                                                                                                                                                                     |
+| v3_public_getoauthToken                   | OAuth token exchange.                                                | [INFERRED]                     | [INFERRED-write]  | probed on 2.0.0.3 during the auth lane research, no session yielded (cloud-auth-2026-11-18.md); SDK-registered                                                                                                                   |
+| v3_public_loginWithAccessToken            | Exchange an account JWT for a workbench session token.               | `device_type` + `access_token` | CONFIRMED (repo)  | the auth lane's exchange; token never logged                                                                                                                                                                                     |
+| v3_printer_getVideoThumbnailList          | List a device's video thumbnails.                                    | `device_id`                    | CONFIRMED (repo)  | read                                                                                                                                                                                                                             |
+| v3_work_project_getErrorList              | Camera/AI inspection defect categories for a project.                | `id` (project id)              | CONFIRMED (repo)  | read                                                                                                                                                                                                                             |
+
+### v5
+
+The current-version API; the machine_material quartet is the custom-filament
+write path (read side live-confirmed 2026-11-21).
+
+| id                                          | function                                                                | params                                                                                | status            | notes                                                                                                                                                                          |
+| ------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| v5_machine_material_getColorGroupListByUser | List the user's colour groups — the cloud's slot→colour→material store. | —                                                                                     | [LIVE 2026-11-21] | array of {key, color}; read side of the custom-filament path                                                                                                                   |
+| v5_machine_material_addUserColorGroup       | Create a user colour group.                                             | color_group/slots/slot_index + material_type/tid/name/unit [INFERRED, binary structs] | [INFERRED-write]  | the write path a custom-filament feature extends; shape from cloud_sdk_cpp struct fields (§4.2), never a live exchange                                                         |
+| v5_machine_material_editUserColorGroup      | Edit an existing colour group.                                          | group_id + above [INFERRED]                                                           | [INFERRED-write]  | never called                                                                                                                                                                   |
+| v5_machine_material_deleteUserColorGroup    | Delete a colour group.                                                  | group_id [INFERRED]                                                                   | [INFERRED-write]  | destructive (removes stored user material state); never called                                                                                                                 |
+| v5_printer_properties_query                 | Query the cloud property mirror of the MQTT report tree.                | unknown                                                                               | [404]             | plain HTTP 404 on this deployment — registered in the SDK but not served here                                                                                                  |
+| v5_printer_file_thumbnail_list              | List thumbnails for a printer's files.                                  | unknown                                                                               | [404]             | plain HTTP 404 on this deployment                                                                                                                                              |
+| v5_project_info                             | One cloud project's detail.                                             | `id` (project id, must be >0)                                                         | [REFUSED-PARAM]   | bare: `invalid GetProjectInfoReq.Id: value must be greater than 0`; with id=1: `Print item does not exist` — validator passed, needs a real project id                         |
+| v5_project_list                             | List cloud projects.                                                    | — (pagination likely, unverified)                                                     | [LIVE 2026-11-21] | 10 projects: project_id/project_name/printer_name/printer_id/model_id/model_name/print_status/status_params/start_time/end_time/estimate_seconds/img/dual_platform_mode_enable |
+| v5_project_source                           | A cloud project's source artefacts.                                     | `id` (project id, must be >0)                                                         | [REFUSED-PARAM]   | same Id validator; with id=1: `Print item does not exist`                                                                                                                      |
+| v5_mqtt_status_report                       | Relay MQTT connection status to the cloud.                              | [INFERRED]                                                                            | [INFERRED-write]  | never called                                                                                                                                                                   |
+| v5_alarm_message_batchSetRead               | Mark several alarm messages read.                                       | [INFERRED]                                                                            | [INFERRED-write]  | never called                                                                                                                                                                   |
+| v5_cloud-file_folder_create                 | Create a cloud-drive folder.                                            | [INFERRED]                                                                            | [INFERRED-write]  | never called                                                                                                                                                                   |
+| v5_cloud-file_folder_delete                 | Delete a cloud-drive folder.                                            | [INFERRED]                                                                            | [INFERRED-write]  | destructive; never called                                                                                                                                                      |
+| v5_cloud-file_folder_rename                 | Rename a cloud-drive folder.                                            | [INFERRED]                                                                            | [INFERRED-write]  | never called                                                                                                                                                                   |
+| v5_cloud-file_folder_list                   | List cloud-drive folders.                                               | —                                                                                     | [LIVE 2026-11-21] | code 1, empty array (no folders on this account)                                                                                                                               |
+| v5_cloud-file_item_move                     | Move an item between folders.                                           | [INFERRED]                                                                            | [INFERRED-write]  | never called                                                                                                                                                                   |
+| v5_project_printHistory_detail              | One print-history task's detail.                                        | `task_id`                                                                             | CONFIRMED (repo)  | the one /v5 route the repo already touches                                                                                                                                     |
+
+### work
+
+| id                          | function                                                              | params                                                     | status           | notes                                                                                                          |
+| --------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| work_printer_info           | Printer detail on the workbench lane.                                 | `id` [INFERRED]                                            | [UNKNOWN]        | bare code 0 `request error` naming no field — param contract unresolved                                        |
+| work_printer_unsetprinters  | Unbind printer(s) from the account.                                   | [INFERRED]                                                 | [INFERRED-write] | destructive; deletion-class (research doc §7); never called                                                    |
+| work_work_addprinter        | Bind a printer to the account.                                        | [INFERRED]                                                 | [INFERRED-write] | never called                                                                                                   |
+| work_project_report         | Report project state to the workbench.                                | [INFERRED]                                                 | [INFERRED-write] | never called                                                                                                   |
+| work_project_unsetprojects  | Remove project(s) from the account.                                   | [INFERRED]                                                 | [INFERRED-write] | destructive; deletion-class (research doc §7); never called                                                    |
+| work_index_getUploadStatus  | Upload state machine status.                                          | id (param name uncertain)                                  | [REFUSED-PARAM]  | bare: `please input id`; retry with a real cloud-file id still `please input id` — expected param name unclear |
+| work_index_renameFile       | Rename an account file.                                               | [INFERRED]                                                 | [INFERRED-write] | never called                                                                                                   |
+| work_index_delFiles         | Delete account files.                                                 | [INFERRED]                                                 | [INFERRED-write] | destructive; deletion-class (research doc §7); never called                                                    |
+| work_gcode_info             | G-code artefact info.                                                 | `id` (gcode id, not task id)                               | CONFIRMED (repo) | read                                                                                                           |
+| work_gcode_infoFdm          | FDM g-code info; resolves gcode id to cloud file id + slice metadata. | `id`                                                       | CONFIRMED (repo) | 63-field generated catalog                                                                                     |
+| work_index_getModelFileInfo | Cloud model file detail.                                              | `id` (file id)                                             | CONFIRMED (repo) | read                                                                                                           |
+| work_index_getUserStore     | Account cloud-storage quota.                                          | —                                                          | CONFIRMED (repo) | quota preflight for the upload flow                                                                            |
+| work_index_userFiles        | List the account's cloud files.                                       | —                                                          | CONFIRMED (repo) | read                                                                                                           |
+| work_operation_sendOrder    | Send a legacy order (print control, settings, queries) to a printer.  | `printer_id` + `order_id` + `msgid` + `timestamp` + `data` | CONFIRMED (repo) | START_PRINT=1 / STOP_PRINT=4 live-validated 2026-09-11; other order ids descriptive-only                       |
+| work_printer_getPrinters    | List the account's printers (legacy workbench route).                 | —                                                          | CONFIRMED (repo) | no longer served on Slicer 2.0.0.3; kept as discovery fallback                                                 |
+| work_project_getProjects    | Paginated cloud projects listing.                                     | `page` + `limit` + `print_status`                          | CONFIRMED (repo) | pagination shape repo-proven                                                                                   |
+
+### farm
+
+The 2026-11-21 sweep probed all six uncovered farm reads: one bare refusal,
+five naming their guard field; file/info was already repo-confirmed; every
+write/destructive row is unapproached.
+
+| id                            | function                                                           | params                                                           | status           | notes                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------- |
+| farm_printer_createBulkTask   | Create bulk print tasks across farm printers (file-path dispatch). | `filePath` + `taskType` [INFERRED via the app's own local route] | [INFERRED-write] | hardware-affecting once a farm printer accepts; never called                                             |
+| farm_device_createBulkTask    | Create bulk print tasks by device id (cloud-file variant).         | undocumented                                                     | [INFERRED-write] | hardware-affecting; request shape undocumented; never called                                             |
+| farm_printer_setCleanPlate    | Run a farm printer's plate-clean routine.                          | [INFERRED]                                                       | [INFERRED-write] | drives printer hardware; never called                                                                    |
+| farm_group_list               | List farm printer groups.                                          | unknown                                                          | [UNKNOWN]        | bare code 0 `request error` naming no field — expected params unknown                                    |
+| farm_file_info                | Cloud file detail on the farm shelf.                               | `id`                                                             | CONFIRMED (repo) | the only /farm route this repo touches                                                                   |
+| farm_message_list             | List farm messages.                                                | `page`                                                           | [REFUSED-PARAM]  | bare: `page require`                                                                                     |
+| farm_message_info             | One farm message's detail.                                         | `message_id`                                                     | [REFUSED-PARAM]  | bare: `message_id require`                                                                               |
+| farm_message_latest           | Latest farm message.                                               | `aggregate_mode`                                                 | [REFUSED-PARAM]  | bare: `aggregate_mode require`; retry with aggregate_mode=1 still refused — expected value shape unclear |
+| farm_message_printerErrorList | Farm printer error events.                                         | `message_id`                                                     | [REFUSED-PARAM]  | bare: `message_id require`                                                                               |
+| farm_message_statistics       | Farm message statistics.                                           | `aggregate_mode`                                                 | [REFUSED-PARAM]  | bare: `aggregate_mode require`; retry with aggregate_mode=1 still refused                                |
+| farm_message_read             | Mark farm messages read.                                           | [INFERRED]                                                       | [INFERRED-write] | never called                                                                                             |
+| farm_message_delete           | Delete one farm message.                                           | [INFERRED]                                                       | [INFERRED-write] | destructive; deletion-class (research doc §7); never called                                              |
+| farm_message_bulkDelete       | Delete several farm messages at once.                              | [INFERRED]                                                       | [INFERRED-write] | destructive; deletion-class (research doc §7); never called                                              |
+
+### user
+
+The account lane. The repo exercises exactly one route here (profile/userInfo,
+under the unregistered /v1 prefix spelling); the SDK registers the plain
+/user spelling.
+
+| id                                    | function                                           | params                          | status            | notes                                                                                                      |
+| ------------------------------------- | -------------------------------------------------- | ------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| user_public_login                     | Password login.                                    | [INFERRED]                      | [INFERRED-write]  | credential lane — kept out of automation, never logged; never called                                       |
+| user_public_logout                    | End the account session.                           | [INFERRED]                      | [INFERRED-write]  | never called                                                                                               |
+| user_public_register                  | Create an account.                                 | [INFERRED]                      | [INFERRED-write]  | never called                                                                                               |
+| user_public_check_nickname            | Check nickname availability.                       | nickname (param name uncertain) | [REFUSED-PARAM]   | bare: `User nickname is required`; retry with a probe nickname still refused — expected param name unclear |
+| user_public_passwordReset             | Reset the account password.                        | [INFERRED]                      | [INFERRED-write]  | credential lane — never driven without an explicit owner request                                           |
+| user_public_getIpAddress              | Report the caller's IP as the cloud sees it.       | —                               | [LIVE 2026-11-21] | {country, province, city}                                                                                  |
+| user_verification_code_newSend        | Send a verification code.                          | [INFERRED]                      | [INFERRED-write]  | external side effect (email/SMS) once accepted; never called                                               |
+| user_profile_newUploadFile            | Claim a completed upload into the file shelf.      | —                               | [INFERRED-write]  | the repo-validated upload flow calls the /v2/profile twin; the /user spelling never called                 |
+| user_profile_userInfo                 | Account profile / identity.                        | —                               | CONFIRMED (repo)  | repo calls the /v1 prefix spelling (unregistered variant); may refuse the raw account JWT                  |
+| user_cloud_storage_getTcCosTempToken  | Issue a temporary cloud-object-storage credential. | [INFERRED]                      | [UNKNOWN]         | bare code 0 `request error` — POST body contract unknown; output would be a credential (redacted)          |
+| user_cloud_storage_lockStorageSpace   | Lock storage before an upload.                     | —                               | [INFERRED-write]  | the /v2 twin is repo-validated; the /user spelling never called                                            |
+| user_cloud_storage_unlockStorageSpace | Release the storage lock.                          | —                               | [INFERRED-write]  | the /v2 twin is repo-validated; the /user spelling never called                                            |
+
+### portal
+
+The unauthenticated pre-login surface. The catalog flags the signed-header
+contract as possibly not applying here; the live calls below rode the signed
+session, so unauthenticated behaviour is untested.
+
+| id                       | function                           | params     | status            | notes                                                                                                       |
+| ------------------------ | ---------------------------------- | ---------- | ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| portal_index_country     | Country list for the pre-login UI. | —          | [LIVE 2026-11-21] | 248 countries (id/code/name/code2/hot/prefix)                                                               |
+| portal_index_country_hot | Popular-country list.              | —          | [LIVE 2026-11-21] | 6 entries, same shape as country                                                                            |
+| portal_index_feedback    | Submit pre-login feedback.         | [INFERRED] | [INFERRED-write]  | never called                                                                                                |
+| portal_index_reason      | Feedback reason list.              | —          | [LIVE 2026-11-21] | 412 reasons (id/reason/desc/type/push/ui_style/popup/help_url)                                              |
+| portal_index_get_version | Portal/app version banner.         | `platform` | [REFUSED-PARAM]   | bare: `Platform must be filled in`; retry with platform=windows still refused — expected enum/shape unknown |
+
+## Endpoint protocol notes
+
+**Envelope.** Every JSON answer carries a `code`/`msg` envelope: `code: 1` =
+success (the success string varies by route — "Operation successful", "Request
+accepted", "OK"), `code: 0` = refusal riding HTTP 200 — branch on the
+envelope, not the HTTP status. Two /v5 routes answer a plain HTTP 404 with no
+envelope at all (SDK-registered, not served on this deployment).
+
+**Validation is gRPC-gateway style.** Number guards surface as
+`invalid <ProtoReq>.<Field>: value must be greater than 0` (observed:
+GetExternalShelvesReq.Id, GetProjectInfoReq.Id, GetProjectSourceTypeReq.Id,
+GetTypeNameAndSkuListByVerNumReq.VerNum); simpler guards surface as
+`"<field> require"` (page, message_id, aggregate_mode, type, names,
+main_version) or as prose ("User nickname is required", "Platform must be
+filled in", "please input id"). A bare probe surfaces exactly one requirement
+per call: filling `type=1` on v2_message_getMessages moved the refusal to
+`page require` — both fields are required. Treat every refusal message as the
+route's parameter contract.
+
+**Method ↔ params slot.** GET params travel in the query string, POST params
+in the JSON body (the callEndpoint contract; getPreSignUrlArrWithName took its
+names[] array in the body). All refusals above arrived over the correct
+channel, so a `require` message means the field name or value shape is wrong,
+not the transport.
+
+**Retry outcomes (endpoint-batch-results2.jsonl).** Flipped to code 1 after a
+named refusal: v2_printer_getExternalShelves (printer id),
+v2_cloud_storage_getPreSignUrlArrWithName (names[]),
+v3_material_getTypeNameAndSkuListByVerNum (ver_num). Moved past params to a
+semantic miss: v5_project_info/source with id=1 → `Print item does not exist`
+(validator passed; needs a real project id). Still refused with the same
+message: farm_message_latest/statistics (aggregate_mode=1),
+v2_message_getMessages (type=1 → then page), v2_network_plugin_info
+(main_version as a string), work_index_getUploadStatus (a real cloud-file id),
+user_public_check_nickname (nickname), portal_index_get_version
+(platform=windows) — for these the expected param name or value shape is still
+unknown; the next probe should come from the SDK string table, not path
+semantics.
+
+**Redaction.** callEndpoint redacts credential-shaped keys (token, secret,
+password, signature, authorization, credential, api_key) from every response,
+and access_token params are never logged. Pre-signed URLs
+(v2_cloud_storage_getPreSignUrlArrWithName) are themselves short-lived
+credentials — same handling: publish shapes, not URLs.
+
+**Family conventions.** portal wants `platform` (get_version refuses without
+it; the string "windows" was rejected). work wants ids (getUploadStatus
+demands one; work_printer_info fails generically). farm wants aggregate_mode
+(message_latest/statistics) plus page/message_id on the other message reads.
+v2 messages want type+page (getMessages). v3 material wants ver_num ≥ 1. /v5
+is the project-centric family; its properties/query mirror is a 404 here —
+the report tree it would mirror lives in the MQTT registry (research doc
+§3.4).
 
 ## MQTT live confirmations (probe 4, 2026-11-21, task 144435802 — v2 gcode, 210 °C)
 
